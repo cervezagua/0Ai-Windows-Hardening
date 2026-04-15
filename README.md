@@ -61,10 +61,10 @@ the manifest. No changes.
 | Code      | Name                               | Default? | What it does                                                                 |
 |-----------|------------------------------------|----------|------------------------------------------------------------------------------|
 | `AI`      | Disable AI across the OS           | yes      | Copilot, Recall, Click-to-Do, Paint AI, Notepad AI, Edge AI, `systemAIModels=Deny` |
-| `PRIV`    | Privacy & telemetry                | yes      | DiagTrack/dmwappush off, AllowTelemetry, Advertising ID, WER, Activity History, sync banners |
+| `PRIV`    | Privacy & telemetry                | yes      | DiagTrack/dmwappush off, AllowTelemetry, Advertising ID, WER, Activity History, sync banners, online speech recognition, Cloud Content / Spotlight / consumer features, Tailored Experiences, online tips, Find My Device, feedback notifications |
 | `HARD`    | Security hardening                 | yes      | RDP off, Restricted Admin, Defender PUA + ASR subset, Exploit Protection     |
 | `DEBLOAT` | Remove bundled apps (destructive)  | **no**   | Widgets / WebExperience, Phone Link / YourPhone / CrossDevice                |
-| `AUDIT`   | Read-only state report             | yes      | OS build, AI component snapshot, Smart App Control state, effective telemetry |
+| `AUDIT`   | Read-only state report             | yes      | OS build, SKU, AI component snapshot, effective telemetry level              |
 
 `DEBLOAT` is excluded by default because removed Appx packages are **not**
 reinstalled by `Revert.ps1`. Opt in only if you're comfortable with that.
@@ -95,13 +95,32 @@ No v2.2 policy was dropped. The `HideAIActionsMenu` entry is labelled
 `Community` and the Narrator `ImageDescriptionsEnabled` entry is labelled
 `BestEffort`, matching the v2.2 caveats.
 
+### v2.3 hotfixes (post-release)
+
+- **Manifest loader fix**: `Import-PowerShellDataFile` silently returns only
+  the first element of a top-level `@(...)` on Windows PowerShell 5.1, which
+  was dropping ~93% of policies. All four entry points now use an AST-based
+  loader (`Parser::ParseFile` + `SafeGetValue` + flatten).
+- **ANSI escape fix**: PS 5.1 doesn't recognize `` `e ``; switched to
+  `[char]27` so the colored console UI renders correctly on 5.1.
+- **Empty report fix**: `_Apply-Report` now coerces `$null` to `@()` so
+  report files always write valid JSON instead of zero-byte files.
+- **Broader AI component snapshot**: `AUDIT.AI.ComponentSnapshot` now also
+  surfaces `MicrosoftWindows.Client.AI*`, Copilot, Recall, and
+  SemanticAnalysis/ContentExtraction/ImageSearch packages so the report is
+  useful on regular Win11 Pro boxes, not just Copilot+ PCs.
+- **Smart App Control audit dropped**: removed `AUDIT.SmartAppControl.State`.
+- **+12 PRIV policies**: online speech recognition, Cloud Content / consumer
+  features, Tailored Experiences with Diagnostic Data, online tips, Find My
+  Device, feedback notifications.
+
 ---
 
 ## What this script does NOT do
 
 - Does **not** force the Windows Firewall on.
 - Does **not** force Defender Real-Time Protection on.
-- Does **not** force Smart App Control on (report-only).
+- Does **not** probe or report Smart App Control state.
 - Does **not** reinstall removed Appx packages on revert.
 - Does **not** make any network calls.
 - Does **not** touch app-private storage or undocumented registry keys.
