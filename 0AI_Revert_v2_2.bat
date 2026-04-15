@@ -10,7 +10,7 @@ REM - Restores systemAIModels to Prompt and tries to undo Defender/mitigation ch
 REM - Does NOT reinstall apps (by design)
 REM
 REM v2.2: symmetric revert for all v2.2 Apply additions (A1 HKLM Copilot,
-REM A2 25H2 WindowsAI catalog keys, A16 HideAIActionsMenu, A17 .rdp hardening,
+REM A16 HideAIActionsMenu, A17 DisablePasswordSaving + Restricted Admin,
 REM A18 Narrator image descriptions, B5 HKCU Notepad policy, C3 explicit CFG drop).
 REM =============================================================================
 
@@ -70,7 +70,7 @@ for %%F in (
   "%BACKUPDIR%\HKLM_Policies_WindowsCopilot.reg"
   "%BACKUPDIR%\HKCU_Policies_WindowsNotepad.reg"
   "%BACKUPDIR%\HKLM_TerminalServices_Policy.reg"
-  "%BACKUPDIR%\HKCU_TerminalServerClient.reg"
+  "%BACKUPDIR%\HKLM_CredentialsDelegation.reg"
   "%BACKUPDIR%\HKCU_Narrator_NoRoam.reg"
 ) do (
   if exist "%%~fF" reg import "%%~fF" >>"%LOG%" 2>&1
@@ -79,16 +79,12 @@ for %%F in (
 echo [+] Best-effort delete of v2.2-added values that had no prior snapshot...>>"%LOG%"
 reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer" /v HideAIActionsMenu /f >>"%LOG%" 2>&1
 reg delete "HKCU\Software\Policies\Microsoft\Windows\Explorer" /v HideAIActionsMenu /f >>"%LOG%" 2>&1
-reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI" /v DisableCocreator /f >>"%LOG%" 2>&1
-reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI" /v DisableGenerativeFill /f >>"%LOG%" 2>&1
-reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI" /v DisableImageCreator /f >>"%LOG%" 2>&1
-reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI" /v TurnOffWindowsCopilot /f >>"%LOG%" 2>&1
 reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" /v TurnOffWindowsCopilot /f >>"%LOG%" 2>&1
 reg delete "HKCU\Software\Policies\Microsoft\Windows\WindowsNotepad" /v DisableAIFeatures /f >>"%LOG%" 2>&1
 reg delete "HKCU\Software\Microsoft\Narrator\NoRoam" /v ImageDescriptionsEnabled /f >>"%LOG%" 2>&1
-reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" /v AllowSavedCredentials /f >>"%LOG%" 2>&1
-reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" /v AllowSavedCredentialsWhenNTLMOnly /f >>"%LOG%" 2>&1
-reg delete "HKCU\Software\Microsoft\Terminal Server Client" /v RDGClientTransport /f >>"%LOG%" 2>&1
+reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" /v DisablePasswordSaving /f >>"%LOG%" 2>&1
+reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\CredentialsDelegation" /v RestrictedRemoteAdministration /f >>"%LOG%" 2>&1
+reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\CredentialsDelegation" /v RestrictedRemoteAdministrationType /f >>"%LOG%" 2>&1
 reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection" /v AllowTelemetry /f >>"%LOG%" 2>&1
 
 echo [+] Restore systemAIModels to Prompt (typical default)...>>"%LOG%"

@@ -11,16 +11,15 @@ REM v2.2 changes (relative to v2.1):
 REM   - Covers Windows 11 24H2 (26100.8246+) and 25H2 (26200.8246+) baselines
 REM     through the April 2026 cumulative KB5083769.
 REM   - A16: Hides the File Explorer "AI Actions" context menu (25H2+).
-REM   - A17: Hardens .rdp client behavior (April 2026 phishing mitigation).
+REM   - A17: Hardens RDP client - DisablePasswordSaving + Restricted Admin
+REM          (complements existing [A13] TermService shutdown).
 REM   - A18: Disables Narrator rich image descriptions (cloud-assisted; expanded
-REM          to all PCs in KB5083769).
+REM          to all PCs in KB5083769). Value name is best-effort.
 REM   - A19: Snapshots Microsoft.Windows.AI.* component versions for audit.
 REM   - B5:  Adds HKCU WindowsNotepad policy path.
 REM   - C4:  Reports Smart App Control state (KB5083769 removed the reinstall
 REM          requirement, but this script still does NOT force-enable SAC).
 REM   - [A1] now also writes HKLM WindowsCopilot (Pro SKUs ignore HKCU on 24H2+).
-REM   - [A2] extends WindowsAI hive with DisableCocreator / DisableGenerativeFill
-REM          / DisableImageCreator / TurnOffWindowsCopilot (25H2 catalog names).
 REM   - [A12] dropped: AllowLockScreenCamera is deprecated on 24H2+ (no-op).
 REM   - [C3] drops explicit CFG (system default since KB5066835) to avoid EDR
 REM          false positives; DEP/SEHOP/BottomUp/HighEntropy/ForceRelocate kept.
@@ -167,7 +166,7 @@ reg export "HKCU\Software\Policies\Microsoft\Windows\Explorer" "%BACKUPDIR%\HKCU
 reg export "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" "%BACKUPDIR%\HKLM_Policies_WindowsCopilot.reg" /y >>"%LOG%" 2>&1
 reg export "HKCU\Software\Policies\Microsoft\Windows\WindowsNotepad" "%BACKUPDIR%\HKCU_Policies_WindowsNotepad.reg" /y >>"%LOG%" 2>&1
 reg export "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" "%BACKUPDIR%\HKLM_TerminalServices_Policy.reg" /y >>"%LOG%" 2>&1
-reg export "HKCU\Software\Microsoft\Terminal Server Client" "%BACKUPDIR%\HKCU_TerminalServerClient.reg" /y >>"%LOG%" 2>&1
+reg export "HKLM\SOFTWARE\Policies\Microsoft\Windows\CredentialsDelegation" "%BACKUPDIR%\HKLM_CredentialsDelegation.reg" /y >>"%LOG%" 2>&1
 reg export "HKCU\Software\Microsoft\Narrator\NoRoam" "%BACKUPDIR%\HKCU_Narrator_NoRoam.reg" /y >>"%LOG%" 2>&1
 
 exit /b 0
@@ -191,11 +190,10 @@ reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI" /v DisableClickToDo
 reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI" /v DisableRecallDataProviders /t REG_DWORD /d 1 /f >>"%LOG%" 2>&1
 reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI" /v DisableSettingsAgent /t REG_DWORD /d 1 /f >>"%LOG%" 2>&1
 reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI" /v DisableSettingsAgenticSearch /t REG_DWORD /d 1 /f >>"%LOG%" 2>&1
-REM v2.2: 25H2 Intune Settings Catalog names (mirror under WindowsAI hive for forward-compat)
-reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI" /v DisableCocreator /t REG_DWORD /d 1 /f >>"%LOG%" 2>&1
-reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI" /v DisableGenerativeFill /t REG_DWORD /d 1 /f >>"%LOG%" 2>&1
-reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI" /v DisableImageCreator /t REG_DWORD /d 1 /f >>"%LOG%" 2>&1
-reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI" /v TurnOffWindowsCopilot /t REG_DWORD /d 1 /f >>"%LOG%" 2>&1
+REM v2.2 note: Cocreator/GenerativeFill/ImageCreator are enforced at the Paint policy hive in [B2];
+REM TurnOffWindowsCopilot is enforced at the WindowsCopilot policy hive in [A1]. We intentionally
+REM do NOT mirror them under WindowsAI - those paths are not documented by Microsoft and the
+REM values were unused noise in the verification report.
 
 echo [A3] Best-effort: purge Recall data folder if present
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
@@ -274,13 +272,16 @@ REM Documented community-wide; Microsoft Learn page pending. Harmless on pre-25H
 reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer" /v HideAIActionsMenu /t REG_DWORD /d 1 /f >>"%LOG%" 2>&1
 reg add "HKCU\Software\Policies\Microsoft\Windows\Explorer" /v HideAIActionsMenu /t REG_DWORD /d 1 /f >>"%LOG%" 2>&1
 
-echo [A17] Harden .rdp client behavior (April 2026 KB5083769 phishing mitigation surface)
+echo [A17] Harden RDP client - block cached credentials and require Restricted Admin
 REM Complements [A13]: even with RDP service off, .rdp attachment attacks still open the client.
-reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" /v AllowSavedCredentials /t REG_DWORD /d 0 /f >>"%LOG%" 2>&1
-reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" /v AllowSavedCredentialsWhenNTLMOnly /t REG_DWORD /d 0 /f >>"%LOG%" 2>&1
-reg add "HKCU\Software\Microsoft\Terminal Server Client" /v RDGClientTransport /t REG_DWORD /d 0 /f >>"%LOG%" 2>&1
+REM GP: "Do not allow passwords to be saved" (Terminal Services) + Restricted Admin (CredentialsDelegation).
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services"  /v DisablePasswordSaving             /t REG_DWORD /d 1 /f >>"%LOG%" 2>&1
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\CredentialsDelegation" /v RestrictedRemoteAdministration    /t REG_DWORD /d 1 /f >>"%LOG%" 2>&1
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\CredentialsDelegation" /v RestrictedRemoteAdministrationType /t REG_DWORD /d 1 /f >>"%LOG%" 2>&1
 
 echo [A18] Disable Narrator rich image descriptions (cloud-assisted; expanded to all PCs in KB5083769)
+REM NOTE: value name "ImageDescriptionsEnabled" is best-effort - not yet confirmed in Microsoft Learn.
+REM Harmless to write on builds where the canonical name differs; verification report flags this.
 reg add "HKCU\Software\Microsoft\Narrator\NoRoam" /v ImageDescriptionsEnabled /t REG_DWORD /d 0 /f >>"%LOG%" 2>&1
 
 echo [A19] Snapshot Microsoft.Windows.AI.* component versions for audit trail
@@ -412,12 +413,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   >>"%VERIFY%" 2>&1
 echo.>>"%VERIFY%"
 
-echo --- Narrator rich image descriptions --- >>"%VERIFY%"
+echo --- Narrator rich image descriptions (value name best-effort; not yet in Microsoft Learn) --- >>"%VERIFY%"
 reg query "HKCU\Software\Microsoft\Narrator\NoRoam" /v ImageDescriptionsEnabled >>"%VERIFY%" 2>&1
 echo.>>"%VERIFY%"
 
-echo --- Terminal Services (.rdp client) hardening --- >>"%VERIFY%"
-reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" >>"%VERIFY%" 2>&1
+echo --- RDP client hardening (DisablePasswordSaving + Restricted Admin) --- >>"%VERIFY%"
+reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" /v DisablePasswordSaving >>"%VERIFY%" 2>&1
+reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\CredentialsDelegation" /v RestrictedRemoteAdministration >>"%VERIFY%" 2>&1
+reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\CredentialsDelegation" /v RestrictedRemoteAdministrationType >>"%VERIFY%" 2>&1
 echo.>>"%VERIFY%"
 
 echo --- Notepad policy keys written (UI may still remain on some builds) --- >>"%VERIFY%"

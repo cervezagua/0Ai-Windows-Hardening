@@ -24,11 +24,12 @@
 
 ## 🆕 What's new in v2.2
 
-- **File Explorer "AI Actions" menu** hidden via `HideAIActionsMenu` (Win11 25H2+).
-- **WindowsAI hive** now also receives the 25H2 Intune Settings-Catalog names (`DisableCocreator`, `DisableGenerativeFill`, `DisableImageCreator`, `TurnOffWindowsCopilot`) for forward-compat.
-- **Copilot** disabled at both `HKCU` *and* `HKLM` (Pro SKUs after 24H2 often ignore the user-hive key alone).
-- **.rdp client hardening** (April 2026 phishing mitigation): saved credentials blocked, RDGClientTransport forced off. Complements the existing `TermService` shutdown.
-- **Narrator rich image descriptions** (cloud-assisted, expanded to all PCs in KB5083769) disabled.
+- **File Explorer "AI Actions" menu** hidden via `HideAIActionsMenu` (Win11 25H2+). *Community-documented; not yet in Microsoft Learn — harmless on pre-25H2 builds.*
+- **Copilot** disabled at both `HKCU` *and* `HKLM` under `Policies\Microsoft\Windows\WindowsCopilot` (Pro SKUs after 24H2 often ignore the user-hive key alone).
+- **RDP client hardening** (defense-in-depth for `.rdp` phishing, alongside the existing `TermService` shutdown in [A13]):
+  - `HKLM\…\Terminal Services\DisablePasswordSaving = 1` — GP "Do not allow passwords to be saved"
+  - `HKLM\…\CredentialsDelegation\RestrictedRemoteAdministration = 1` + `…Type = 1` — forces Restricted Admin / no plaintext creds over the wire
+- **Narrator rich image descriptions** (cloud-assisted; expanded to all PCs in KB5083769) disabled at `HKCU\Software\Microsoft\Narrator\NoRoam\ImageDescriptionsEnabled`. *Value name is best-effort; not yet confirmed in Microsoft Learn.*
 - **Notepad** policy also written at HKCU (`Software\Policies\Microsoft\Windows\WindowsNotepad`) — recent Store builds read user scope first.
 - **Telemetry mirror** at `HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection`, and a note in `verification.txt` that Pro/Home SKUs silently clamp `AllowTelemetry=0` to `1`.
 - **Smart App Control** state is now surfaced in the verification report (KB5083769 removed the "clean reinstall only" requirement). The script **does not** force SAC on — report-only.
