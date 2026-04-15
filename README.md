@@ -1,202 +1,183 @@
-# 🛡️ 0AI – Windows Hardening Script
+# 0AI - Windows Hardening Kit
 
-### One-Click Windows 11 Privacy, AI Disablement & Security Hardening  
-**Version:** `v2.2` ✅
+### Windows 11 Privacy, AI Disablement & Security Hardening
+**Version:** `v2.3`
 
-**Supported baselines:** Windows 11 24H2 (OS Build **26100.8246+**) and 25H2 (OS Build **26200.8246+**), through the **April 2026 cumulative KB5083769**. Earlier builds still work but the 25H2-specific switches (e.g. File Explorer AI Actions) are no-ops.
+**Supported baselines:** Windows 11 24H2 (OS Build **26100.8246+**) and 25H2
+(OS Build **26200.8246+**), through the **April 2026 cumulative KB5083769**.
+Earlier builds still work but the 25H2-specific switches (e.g. File Explorer
+AI Actions) are no-ops.
+
+> **v2.2 users**: the legacy `.bat` scripts are preserved under `legacy/` and
+> still work. v2.3 is a PowerShell-first rewrite with the same effective
+> policies — see `docs/ARCHITECTURE.md`.
 
 ---
 
-## 🚀 Quick Start
+## Quick Start (v2.3)
 
-### ▶ Apply Hardening
-1. **Right-click** `0AI_Apply_v2_2.bat`
+### Apply
+1. **Right-click** `0AI_Apply.cmd`
 2. Select **Run as Administrator**
-3. Press **`P`** → *Run everything (recommended)*
-4. **Reboot** when finished
+3. Wait for the console progress to finish
+4. **Reboot** when done
 
-### ↩️ Revert Changes
-1. **Right-click** `0AI_Revert_v2_2.bat`
+By default this runs categories `AI`, `PRIV`, `HARD`, and `AUDIT`. It does
+**not** run `DEBLOAT` (destructive Appx removal) unless you explicitly ask
+for it.
+
+```cmd
+REM Include Widgets + Phone Link removal (not reinstallable via revert):
+0AI_Apply.cmd -Categories AI,PRIV,HARD,DEBLOAT,AUDIT
+
+REM Dry-run: show the plan and exit without changes:
+0AI_Apply.cmd -WhatIf
+
+REM Run only specific policies by ID:
+0AI_Apply.cmd -Select AI.WindowsAI.AllowRecallEnablement,HARD.Defender.PUAProtection
+```
+
+### Revert
+1. **Right-click** `0AI_Revert.cmd`
 2. Select **Run as Administrator**
 3. **Reboot**
 
----
+Revert finds the most recent backup folder under
+`%USERPROFILE%\0AI_Backups`, reads `run.json`, and walks each action
+backwards through the same dispatcher. It does **not** reinstall removed
+Appx packages (matches v2.2 behaviour).
 
-## 🆕 What's new in v2.2
-
-- **File Explorer "AI Actions" menu** hidden via `HideAIActionsMenu` (Win11 25H2+). *Community-documented; not yet in Microsoft Learn — harmless on pre-25H2 builds.*
-- **Copilot** disabled at both `HKCU` *and* `HKLM` under `Policies\Microsoft\Windows\WindowsCopilot` (Pro SKUs after 24H2 often ignore the user-hive key alone).
-- **RDP client hardening** (defense-in-depth for `.rdp` phishing, alongside the existing `TermService` shutdown in [A13]):
-  - `HKLM\…\Terminal Services\DisablePasswordSaving = 1` — GP "Do not allow passwords to be saved"
-  - `HKLM\…\CredentialsDelegation\RestrictedRemoteAdministration = 1` + `…Type = 1` — forces Restricted Admin / no plaintext creds over the wire
-- **Narrator rich image descriptions** (cloud-assisted; expanded to all PCs in KB5083769) disabled at `HKCU\Software\Microsoft\Narrator\NoRoam\ImageDescriptionsEnabled`. *Value name is best-effort; not yet confirmed in Microsoft Learn.*
-- **Notepad** policy also written at HKCU (`Software\Policies\Microsoft\Windows\WindowsNotepad`) — recent Store builds read user scope first.
-- **Telemetry mirror** at `HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection`, and a note in `verification.txt` that Pro/Home SKUs silently clamp `AllowTelemetry=0` to `1`.
-- **Smart App Control** state is now surfaced in the verification report (KB5083769 removed the "clean reinstall only" requirement). The script **does not** force SAC on — report-only.
-- **Audit snapshot** of `Microsoft.Windows.AI.*` component versions (Image Search / Content Extraction / Semantic Analysis / Settings Model) now saved to `AI_Components.txt`.
-- **[A12] removed**: `AllowLockScreenCamera` is deprecated on 24H2+ (no-op).
-- **[C3] Exploit Protection** no longer explicitly sets `CFG` — it has been a system default since KB5066835 and the explicit toggle occasionally triggers EDR false positives. DEP / SEHOP / BottomUp / HighEntropy / ForceRelocateImages remain.
-
----
-
-## 🧠 Overview
-
-**0AI v2.2 SAFE** is a conservative, policy-based Windows 11 hygiene script focused on:
-
-- 🔒 Privacy hardening  
-- 🤖 Reducing Windows AI surface area  
-- 🚫 Disabling background AI features  
-  - Recall  
-  - Click-to-Do  
-  - Agentic / AI search  
-- 🧹 Removing select consumer features  
-  - Widgets  
-  - Phone Link  
-- 🛠️ Applying supported security hardening  
-
-This release **avoids undocumented hacks**, private app data manipulation, and fragile assumptions.  
-Everything is **supported, reversible, and stable**.
-
----
-
-## 🧩 Design Principles
-
-- **Policy-First**  
-  Uses documented Windows policies and supported registry paths only.
-- **Fail-Safe**  
-  If a setting cannot be enforced, the script exits cleanly.
-- **Fully Reversible**  
-  Registry snapshots and a dedicated revert script are included.
-- **Distribution-Safe**  
-  Safe to share with non-technical users.
-- **Honest by Design**  
-  Does not claim control over what Windows does not allow.
-
----
-
-## 🛠️ What This Script Does
-
-### 🔐 A) Core Privacy & AI Surface Reduction
-
-Disables Windows AI platform features:
-- ❌ Recall  
-- ❌ Click-to-Do  
-- ❌ Agentic Settings Search  
-- ❌ AI data analysis  
-
-Other actions:
-- 🔍 Forces **classic local-only Windows Search** (no Bing / web results)
-- 🧱 Removes & blocks **Widgets (WebExperience)**
-- 📉 Minimizes telemetry:
-  - DiagTrack  
-  - dmwappush  
-
-Disables:
-- Windows Error Reporting  
-- Advertising ID  
-- Activity History  
-- Cross-device Clipboard  
-- Remote Desktop service  
-
-Keeps:
-- ✅ OneDrive (including autostart)
-
-Removes:
-- ❌ Phone Link / Cross-Device Experience  
-  *(installed + provisioned)*
-
----
-
-### 🎨 B) AI in Apps (Safe, Supported Controls Only)
-
-**Paint**
-- Cocreator disabled  
-- Generative Fill disabled  
-- Image Creator disabled  
-
-**Notepad**
-- Writes supported policy keys under:
+### Verify (read-only)
+```cmd
+0AI_Verify.cmd
 ```
+Prints a table of `Id | Expected | Current | Status` for every policy in
+the manifest. No changes.
 
-HKLM\SOFTWARE\Policies\Microsoft\Notepad
-HKLM\SOFTWARE\Policies\WindowsNotepad
+---
+
+## The 5 categories
+
+| Code      | Name                               | Default? | What it does                                                                 |
+|-----------|------------------------------------|----------|------------------------------------------------------------------------------|
+| `AI`      | Disable AI across the OS           | yes      | Copilot, Recall, Click-to-Do, Paint AI, Notepad AI, Edge AI, `systemAIModels=Deny` |
+| `PRIV`    | Privacy & telemetry                | yes      | DiagTrack/dmwappush off, AllowTelemetry, Advertising ID, WER, Activity History, sync banners |
+| `HARD`    | Security hardening                 | yes      | RDP off, Restricted Admin, Defender PUA + ASR subset, Exploit Protection     |
+| `DEBLOAT` | Remove bundled apps (destructive)  | **no**   | Widgets / WebExperience, Phone Link / YourPhone / CrossDevice                |
+| `AUDIT`   | Read-only state report             | yes      | OS build, AI component snapshot, Smart App Control state, effective telemetry |
+
+`DEBLOAT` is excluded by default because removed Appx packages are **not**
+reinstalled by `Revert.ps1`. Opt in only if you're comfortable with that.
+
+---
+
+## What's new in v2.3
+
+- **New architecture** — layered, manifest-driven, PowerShell-first. Each
+  policy is a data record in `src/manifest/*.psd1`, dispatched by
+  `src/module/OAi.Engine.psm1`, orchestrated with real parallelism by
+  `src/module/OAi.Runner.psm1`. See `docs/ARCHITECTURE.md`.
+- **5-category model** replaces the v2.2 A/B/C menu.
+- **Parallel execution** — registry writes and service toggles run in
+  parallel with per-group caps (reg-safe=16, sc-safe=8, appx=1, defender=1,
+  mitigation=1, report=4). Slow Appx removals in `DEBLOAT` no longer block
+  fast reg writes in `PRIV`/`HARD`.
+- **Symmetric revert** via `run.json` — every action recorded at apply time
+  is reversed through the same dispatcher, not a hand-maintained list.
+- **`-WhatIf` dry-run** prints the plan grouped by Confidence and exits
+  without making changes.
+- **`Verify.ps1`** is a first-class read-only command that diffs expected
+  vs current state for every policy.
+- **Pester schema tests** in `tests/Manifest.Tests.ps1` run anywhere with
+  `pwsh` installed (no Windows cmdlets required).
+
+No v2.2 policy was dropped. The `HideAIActionsMenu` entry is labelled
+`Community` and the Narrator `ImageDescriptionsEnabled` entry is labelled
+`BestEffort`, matching the v2.2 caveats.
+
+---
+
+## What this script does NOT do
+
+- Does **not** force the Windows Firewall on.
+- Does **not** force Defender Real-Time Protection on.
+- Does **not** force Smart App Control on (report-only).
+- Does **not** reinstall removed Appx packages on revert.
+- Does **not** make any network calls.
+- Does **not** touch app-private storage or undocumented registry keys.
+
+These are intentional design choices.
+
+---
+
+## Execution policy
+
+The launchers invoke PowerShell with `-ExecutionPolicy Bypass` — the same
+posture as v2.2. The scripts are not code-signed. If your environment
+requires signed scripts, import the modules directly from an elevated
+prompt or sign them yourself.
+
+---
+
+## File layout
 
 ```
-- Reduces backend AI capability
-
-⚠ **Important limitation (by Microsoft design):**  
-On some Windows 11 / Notepad builds, the Copilot / Rewrite button may still appear even when policy keys exist.  
-This script **does not** manipulate Notepad’s private app storage to force UI removal.
-
-**System-Wide**
-- `systemAIModels` capability set to **Deny** (HKLM + HKCU)  
-- Reduces generative AI access across the OS
-
----
-
-### 🧯 C) Security Hardening (Dev-Friendly)
-
-**Microsoft Defender**
-- PUA Protection → **Block** *(best-effort)*  
-- ASR rules enabled *(compatibility subset)*  
-
-**Exploit Protection**
-- System defaults enabled:
-- DEP  
-- ASLR  
-- SEHOP  
-- CFG  
-
-🚫 **Does NOT**
-- Force Firewall ON  
-- Force Defender Real-Time Protection ON  
-
-> Defender settings may be blocked by Tamper Protection or MDM.  
-> Attempts are logged but not forced.
-
----
-
-## 🔄 Safety & Reversibility
-
-Before making changes, the script:
-- 🧩 Attempts to create a **System Restore Point**
-- 📦 Exports registry keys to:
+/
+|-- 0AI_Apply.cmd            launcher
+|-- 0AI_Revert.cmd           launcher
+|-- 0AI_Verify.cmd           launcher
+|-- src/
+|   |-- Apply.ps1
+|   |-- Revert.ps1
+|   |-- Verify.ps1
+|   |-- manifest/            data: one .psd1 per category
+|   `-- module/              engine + runner + UI
+|-- tests/Manifest.Tests.ps1
+|-- docs/ARCHITECTURE.md
+|-- legacy/                  v2.2 .bat scripts, preserved for reference
+`-- README.md                (this file)
 ```
 
-%USERPROFILE%\0AI_Backups<timestamp>\
+---
 
-```
+## Legacy v2.2
 
-Creates:
-- `apply.log`
-- `verification.txt`
+The v2.2 `.bat` scripts are still in the repo under `legacy/`:
 
-### 🔁 Revert Script
-- Restores registry snapshots  
-- Resets `systemAIModels` to default (**Prompt**)  
-- Best-effort reverts Defender and exploit mitigations  
-- ❌ Does **not** reinstall removed apps *(by design)*
+- `legacy/0AI_Apply_v2_2.bat`
+- `legacy/0AI_Revert_v2_2.bat`
+
+They are unchanged from the `823d2da` commit on `main` and continue to work
+on any Windows 11 build. Use v2.2 if you prefer a single self-contained
+batch script; use v2.3 if you want the manifest-driven design, parallel
+execution, `-WhatIf`, structured revert, and Pester schema tests.
 
 ---
 
-## 🚫 What This Script Does NOT Do
+## Safety & reversibility
 
-- Does **not** uninstall core Windows components  
-- Does **not** hack Store app internal data  
-- Does **not** guarantee removal of all AI UI elements  
-- Does **not** block Windows Update or Store updates  
+Before making changes, Apply:
+- Creates a best-effort **System Restore Point**
+- Writes per-policy backup snapshots to
+  `%USERPROFILE%\0AI_Backups\<timestamp>\`
+- Saves `apply.log`, `run.json`, and `verification.txt`
 
-➡️ This behavior is **intentional**.
+Revert:
+- Reads the newest `run.json`
+- Restores registry snapshots with `reg import`
+- Restores Defender preferences from the pre-run snapshot
+- Removes the ASR rules it added
+- Disables the process mitigations it enabled
+- Does **not** reinstall removed Appx packages (by design)
 
 ---
 
-## 🎯 Threat Model Summary
+## Threat model
 
 Designed to:
-- Prevent silent background AI activity  
-- Reduce data collection and agentic behavior  
-- Preserve system stability and update compatibility  
+- Prevent silent background AI activity
+- Reduce data collection and agentic behaviour
+- Preserve system stability and update compatibility
 
-> Security correctness is prioritized over cosmetic enforcement.
-> Aggressive or undocumented techniques are **intentionally excluded**.
-```
+> Security correctness is prioritized over cosmetic enforcement. Aggressive
+> or undocumented techniques are intentionally excluded.
