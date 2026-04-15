@@ -4,15 +4,19 @@
 #
 @(
 
-    # ---- [A19] Microsoft.Windows.AI.* component snapshot ----
+    # ---- [A19] Microsoft.Windows.AI.* + related component snapshot ----
+    # Broader filter than v2.2: Microsoft.Windows.AI.* is only preinstalled on
+    # Copilot+ PCs. On regular Win11 Pro boxes it returns nothing, so we also
+    # surface MicrosoftWindows.Client.AI* and anything Copilot/Recall branded
+    # so the audit report is actually useful on non-Copilot+ machines.
     @{
         Id          = 'AUDIT.AI.ComponentSnapshot'
         Category    = 'AUDIT'
         Group       = 'report'
-        Description = 'Snapshot Microsoft.Windows.AI.* Appx component versions'
+        Description = 'Snapshot installed AI-related Appx component versions'
         MinBuild    = 0
         Kind        = 'Report'
-        Script      = 'try { Get-AppxPackage Microsoft.Windows.AI.* -ErrorAction SilentlyContinue | Select-Object Name,Version,PackageFullName } catch { @() }'
+        Script      = 'try { @(Get-AppxPackage -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "Microsoft.Windows.AI*" -or $_.Name -like "MicrosoftWindows*AI*" -or $_.Name -like "*Copilot*" -or $_.Name -like "*Recall*" -or $_.Name -like "*SemanticAnalysis*" -or $_.Name -like "*ContentExtraction*" -or $_.Name -like "*ImageSearch*" } | Select-Object Name,Version,PackageFullName) } catch { @() }'
         DocUrl      = 'https://learn.microsoft.com/windows/application-management/apps-in-windows-11'
         Confidence  = 'Documented'
         Reversible  = $true
