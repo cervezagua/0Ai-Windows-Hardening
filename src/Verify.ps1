@@ -16,12 +16,38 @@ $manifestDir = Join-Path $thisDir 'manifest'
 
 function _Resolve-Hive { param([string]$H) switch ($H) { 'HKLM' { 'HKLM:' } 'HKCU' { 'HKCU:' } default { $H + ':' } } }
 
+# Import-PowerShellDataFile rejects top-level arrays. Parse via AST + SafeGetValue.
+function _Collect-Hashtables {
+    param($Val, [System.Collections.Generic.List[object]]$Acc)
+    if ($null -eq $Val) { return }
+    if ($Val -is [System.Collections.IDictionary]) { [void]$Acc.Add($Val); return }
+    if ($Val -is [System.Collections.IEnumerable] -and $Val -isnot [string]) {
+        foreach ($v in $Val) { _Collect-Hashtables -Val $v -Acc $Acc }
+        return
+    }
+}
+function _Load-PolicyManifest {
+    param([string]$Path)
+    $tokens = $null
+    $errs   = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($Path, [ref]$tokens, [ref]$errs)
+    if ($errs -and @($errs).Count -gt 0) {
+        throw ('parse error in {0}: {1}' -f (Split-Path -Leaf $Path), @($errs)[0].Message)
+    }
+    $stmts = @($ast.EndBlock.Statements)
+    if ($stmts.Count -eq 0) { return ,@() }
+    $val = $stmts[0].PipelineElements[0].Expression.SafeGetValue()
+    $acc = New-Object System.Collections.Generic.List[object]
+    _Collect-Hashtables -Val $val -Acc $acc
+    return ,$acc.ToArray()
+}
+
 $manifestFiles = Get-ChildItem -Path $manifestDir -Filter '*.psd1' -ErrorAction Stop
 $all = New-Object System.Collections.Generic.List[object]
 foreach ($mf in $manifestFiles) {
     try {
-        $data = Import-PowerShellDataFile -Path $mf.FullName
-        foreach ($p in @($data)) { if ($p) { $all.Add($p) } }
+        $data = _Load-PolicyManifest -Path $mf.FullName
+        foreach ($p in $data) { if ($p) { $all.Add($p) } }
     } catch {
         Write-Warning ('[!] Failed to load manifest {0}: {1}' -f $mf.Name, $_.Exception.Message)
     }

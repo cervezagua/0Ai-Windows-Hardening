@@ -392,7 +392,12 @@ function _Apply-Report {
     try {
         $sb = [scriptblock]::Create($Policy.Script)
         $res = & $sb
-        $res | ConvertTo-Json -Depth 6 | Out-File -Encoding UTF8 -FilePath $outPath
+        # Always write valid JSON. A $null / empty result must become "[]",
+        # not a zero-byte file. ($null | ConvertTo-Json | Out-File drops silently.)
+        if ($null -eq $res) { $res = @() }
+        $json = ConvertTo-Json -InputObject $res -Depth 6
+        if ([string]::IsNullOrEmpty($json)) { $json = '[]' }
+        $json | Out-File -Encoding UTF8 -FilePath $outPath
         return "report written: $outPath"
     } catch {
         ('{"error":"' + $_.Exception.Message.Replace('"', "'") + '"}') | Out-File -Encoding UTF8 -FilePath $outPath
