@@ -9,6 +9,10 @@ if %errorlevel% NEQ 0 (
   exit /b
 )
 
+REM Force UTF-8 so the dashboard launcher's box-drawing characters render
+REM correctly on default conhost. Harmless on any Win10/11 build.
+chcp 65001 >nul
+
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0src\Apply.ps1" %*
 set "RC=%ERRORLEVEL%"
 echo.
