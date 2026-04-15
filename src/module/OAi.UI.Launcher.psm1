@@ -11,14 +11,16 @@
 #
 # Non-interactive hosts get the v2.2-equivalent default result.
 #
-# PS 5.1 compatible: uses [char]27 for ANSI escapes, $Host.UI.RawUI.ReadKey
-# for key input, no $PSStyle.
+# PS 5.1 compatible: uses $Host.UI.RawUI.ReadKey for key input, Clear-Host
+# for screen clear (reliable on conhost), and Write-Host -ForegroundColor /
+# -BackgroundColor for coloring. No ANSI escape sequences - those leaked via
+# Write-Host on PS 5.1 and the [2J clear did not wipe scrollback, which made
+# the menu stack vertically on every redraw.
 #
 
 # StrictMode disabled for hashtable-heavy manifest handling
 $ErrorActionPreference = 'Stop'
 
-$script:ESC         = [char]27
 $script:INNER_WIDTH = 62
 
 # Short category blurbs shown in each row
@@ -71,23 +73,24 @@ function _Count-ByCategory {
     return $stats
 }
 
+function _Clear-Screen {
+    # Clear-Host on PS 5.1 uses native console APIs and reliably wipes both
+    # the viewport and scrollback on conhost. [Console]::Clear() as a
+    # belt-and-suspenders fallback in case the host blocks Clear-Host.
+    try { Clear-Host; return } catch {}
+    try { [Console]::Clear() } catch {}
+}
+
 function _Draw-Picker {
     param(
         $Stats,
         [string[]]$Rows,
         $Selected,
         [int]$Cursor,
-        [bool]$Dryrun,
-        [bool]$Ansi
+        [bool]$Dryrun
     )
 
-    $e = $script:ESC
-
-    if ($Ansi) {
-        [Console]::Write("$e[2J$e[H")
-    } else {
-        try { Clear-Host } catch {}
-    }
+    _Clear-Screen
 
     # Light-line box-drawing characters
     $cTL = [char]0x250C  # ┌
@@ -114,7 +117,9 @@ function _Draw-Picker {
     for ($i = 0; $i -lt $Rows.Count; $i++) {
         $cat   = $Rows[$i]
         $s     = $Stats[$cat]
-        $arrow = if ($i -eq $Cursor) { [string]([char]0x25B8) } else { ' ' }
+        # Plain '>' arrow instead of the Unicode triangle: renders in every
+        # codepage and does not depend on the console font.
+        $arrow = if ($i -eq $Cursor) { '>' } else { ' ' }
         $mark  = if ($Selected[$cat]) { 'x' } else { ' ' }
 
         $blurb = [string]$script:CategoryBlurb[$cat]
@@ -125,10 +130,13 @@ function _Draw-Picker {
 
         $line = ' ' + $vb + (_Pad-Interior $inner) + $vb
 
-        if ($Ansi -and $i -eq $Cursor) {
-            Write-Host ("$e[7m$line$e[0m")
-        } elseif ($Ansi -and $s.Destructive) {
-            Write-Host ("$e[31m$line$e[0m")
+        # Use PS-native color params instead of ANSI escapes. Write-Host with
+        # embedded [char]27 sequences leaked on PS 5.1 - the reset did not
+        # always take effect, so later rows ended up painted red.
+        if ($i -eq $Cursor) {
+            Write-Host $line -ForegroundColor Black -BackgroundColor Gray
+        } elseif ($s.Destructive) {
+            Write-Host $line -ForegroundColor Red
         } else {
             Write-Host $line
         }
@@ -165,20 +173,13 @@ function Show-LauncherMenu {
 
     $stats = _Count-ByCategory -Manifest $Manifest
 
-    $ansi = $false
-    try {
-        if ($Host -and $Host.UI -and $Host.UI.SupportsVirtualTerminal) {
-            $ansi = [bool]$Host.UI.SupportsVirtualTerminal
-        }
-    } catch { $ansi = $false }
-
     $rows     = @('AI','PRIV','HARD','AUDIT','DEBLOAT')
     $selected = @{ AI = $true; PRIV = $true; HARD = $true; AUDIT = $true; DEBLOAT = $false }
     $cursor   = 0
     $dryrun   = $false
 
     while ($true) {
-        _Draw-Picker -Stats $stats -Rows $rows -Selected $selected -Cursor $cursor -Dryrun $dryrun -Ansi $ansi
+        _Draw-Picker -Stats $stats -Rows $rows -Selected $selected -Cursor $cursor -Dryrun $dryrun
 
         $k = $null
         try {
