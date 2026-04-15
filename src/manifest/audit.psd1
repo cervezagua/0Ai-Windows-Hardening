@@ -23,21 +23,6 @@
         Destructive = $false
     },
 
-    # ---- [C4] Smart App Control state ----
-    @{
-        Id          = 'AUDIT.SmartAppControl.State'
-        Category    = 'AUDIT'
-        Group       = 'report'
-        Description = 'Report Smart App Control state (KB5083769)'
-        MinBuild    = 0
-        Kind        = 'Report'
-        Script      = 'try { Get-MpComputerStatus | Select-Object SmartAppControlState,SmartAppControlExpiration } catch { [pscustomobject]@{ Error = "Get-MpComputerStatus unavailable" } }'
-        DocUrl      = 'https://learn.microsoft.com/windows/apps/develop/smart-app-control/overview'
-        Confidence  = 'Documented'
-        Reversible  = $true
-        Destructive = $false
-    },
-
     # ---- OS build + UBR ----
     @{
         Id          = 'AUDIT.OS.BuildInfo'
