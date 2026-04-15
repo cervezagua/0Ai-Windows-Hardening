@@ -1,28 +1,46 @@
 # 🛡️ 0AI – Windows Hardening Script
 
 ### One-Click Windows 11 Privacy, AI Disablement & Security Hardening  
-**Version:** `v2.1` ✅
+**Version:** `v2.2` ✅
+
+**Supported baselines:** Windows 11 24H2 (OS Build **26100.8246+**) and 25H2 (OS Build **26200.8246+**), through the **April 2026 cumulative KB5083769**. Earlier builds still work but the 25H2-specific switches (e.g. File Explorer AI Actions) are no-ops.
 
 ---
 
 ## 🚀 Quick Start
 
 ### ▶ Apply Hardening
-1. **Right-click** `0AI_Apply_v2_1.bat`
+1. **Right-click** `0AI_Apply_v2_2.bat`
 2. Select **Run as Administrator**
 3. Press **`P`** → *Run everything (recommended)*
 4. **Reboot** when finished
 
 ### ↩️ Revert Changes
-1. **Right-click** `0AI_Revert_v2_1.bat`
+1. **Right-click** `0AI_Revert_v2_2.bat`
 2. Select **Run as Administrator**
 3. **Reboot**
 
 ---
 
+## 🆕 What's new in v2.2
+
+- **File Explorer "AI Actions" menu** hidden via `HideAIActionsMenu` (Win11 25H2+).
+- **WindowsAI hive** now also receives the 25H2 Intune Settings-Catalog names (`DisableCocreator`, `DisableGenerativeFill`, `DisableImageCreator`, `TurnOffWindowsCopilot`) for forward-compat.
+- **Copilot** disabled at both `HKCU` *and* `HKLM` (Pro SKUs after 24H2 often ignore the user-hive key alone).
+- **.rdp client hardening** (April 2026 phishing mitigation): saved credentials blocked, RDGClientTransport forced off. Complements the existing `TermService` shutdown.
+- **Narrator rich image descriptions** (cloud-assisted, expanded to all PCs in KB5083769) disabled.
+- **Notepad** policy also written at HKCU (`Software\Policies\Microsoft\Windows\WindowsNotepad`) — recent Store builds read user scope first.
+- **Telemetry mirror** at `HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection`, and a note in `verification.txt` that Pro/Home SKUs silently clamp `AllowTelemetry=0` to `1`.
+- **Smart App Control** state is now surfaced in the verification report (KB5083769 removed the "clean reinstall only" requirement). The script **does not** force SAC on — report-only.
+- **Audit snapshot** of `Microsoft.Windows.AI.*` component versions (Image Search / Content Extraction / Semantic Analysis / Settings Model) now saved to `AI_Components.txt`.
+- **[A12] removed**: `AllowLockScreenCamera` is deprecated on 24H2+ (no-op).
+- **[C3] Exploit Protection** no longer explicitly sets `CFG` — it has been a system default since KB5066835 and the explicit toggle occasionally triggers EDR false positives. DEP / SEHOP / BottomUp / HighEntropy / ForceRelocateImages remain.
+
+---
+
 ## 🧠 Overview
 
-**0AI v2.1 SAFE** is a conservative, policy-based Windows 11 hygiene script focused on:
+**0AI v2.2 SAFE** is a conservative, policy-based Windows 11 hygiene script focused on:
 
 - 🔒 Privacy hardening  
 - 🤖 Reducing Windows AI surface area  

@@ -1,13 +1,17 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
-title 0AI - Privacy ^& Security Kit (Revert v2.1)
+title 0AI - Privacy ^& Security Kit (Revert v2.2)
 
 REM =============================================================================
-REM 0AI_Revert_v2_1.bat
+REM 0AI_Revert_v2_2.bat
 REM - Uses the newest folder in %USERPROFILE%\0AI_Backups
 REM - Imports registry exports where available (best-effort)
 REM - Restores systemAIModels to Prompt and tries to undo Defender/mitigation changes
 REM - Does NOT reinstall apps (by design)
+REM
+REM v2.2: symmetric revert for all v2.2 Apply additions (A1 HKLM Copilot,
+REM A2 25H2 WindowsAI catalog keys, A16 HideAIActionsMenu, A17 .rdp hardening,
+REM A18 Narrator image descriptions, B5 HKCU Notepad policy, C3 explicit CFG drop).
 REM =============================================================================
 
 net session >nul 2>&1 || (echo [!] Run this script as Administrator. & pause & exit /b 1)
@@ -36,7 +40,7 @@ echo.>"%LOG%"
 
 echo [+] Creating best-effort restore point (before revert)...>>"%LOG%"
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "try { Checkpoint-Computer -Description '0AI_Revert_v2_1' -RestorePointType 'MODIFY_SETTINGS' | Out-Null } catch { }" ^
+  "try { Checkpoint-Computer -Description '0AI_Revert_v2_2' -RestorePointType 'MODIFY_SETTINGS' | Out-Null } catch { }" ^
   >>"%LOG%" 2>&1
 
 echo [+] Importing registry exports (best-effort)...>>"%LOG%"
@@ -61,9 +65,31 @@ for %%F in (
   "%BACKUPDIR%\HKCU_Explorer_Advanced.reg"
   "%BACKUPDIR%\HKLM_ConsentStore_systemAIModels.reg"
   "%BACKUPDIR%\HKCU_ConsentStore_systemAIModels.reg"
+  "%BACKUPDIR%\HKLM_Policies_Explorer.reg"
+  "%BACKUPDIR%\HKCU_Policies_Explorer.reg"
+  "%BACKUPDIR%\HKLM_Policies_WindowsCopilot.reg"
+  "%BACKUPDIR%\HKCU_Policies_WindowsNotepad.reg"
+  "%BACKUPDIR%\HKLM_TerminalServices_Policy.reg"
+  "%BACKUPDIR%\HKCU_TerminalServerClient.reg"
+  "%BACKUPDIR%\HKCU_Narrator_NoRoam.reg"
 ) do (
   if exist "%%~fF" reg import "%%~fF" >>"%LOG%" 2>&1
 )
+
+echo [+] Best-effort delete of v2.2-added values that had no prior snapshot...>>"%LOG%"
+reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer" /v HideAIActionsMenu /f >>"%LOG%" 2>&1
+reg delete "HKCU\Software\Policies\Microsoft\Windows\Explorer" /v HideAIActionsMenu /f >>"%LOG%" 2>&1
+reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI" /v DisableCocreator /f >>"%LOG%" 2>&1
+reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI" /v DisableGenerativeFill /f >>"%LOG%" 2>&1
+reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI" /v DisableImageCreator /f >>"%LOG%" 2>&1
+reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI" /v TurnOffWindowsCopilot /f >>"%LOG%" 2>&1
+reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" /v TurnOffWindowsCopilot /f >>"%LOG%" 2>&1
+reg delete "HKCU\Software\Policies\Microsoft\Windows\WindowsNotepad" /v DisableAIFeatures /f >>"%LOG%" 2>&1
+reg delete "HKCU\Software\Microsoft\Narrator\NoRoam" /v ImageDescriptionsEnabled /f >>"%LOG%" 2>&1
+reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" /v AllowSavedCredentials /f >>"%LOG%" 2>&1
+reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" /v AllowSavedCredentialsWhenNTLMOnly /f >>"%LOG%" 2>&1
+reg delete "HKCU\Software\Microsoft\Terminal Server Client" /v RDGClientTransport /f >>"%LOG%" 2>&1
+reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection" /v AllowTelemetry /f >>"%LOG%" 2>&1
 
 echo [+] Restore systemAIModels to Prompt (typical default)...>>"%LOG%"
 reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\systemAIModels" /v Value /t REG_SZ /d Prompt /f >>"%LOG%" 2>&1
@@ -84,8 +110,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   >>"%LOG%" 2>&1
 
 echo [+] Attempting to undo exploit mitigations we enabled (best-effort)...>>"%LOG%"
+REM v2.2: CFG is a system default since KB5066835; we no longer touch it on Apply or Revert.
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "try { Set-ProcessMitigation -System -Disable DEP,ForceRelocateImages,BottomUp,HighEntropy,SEHOP,CFG } catch { }" ^
+  "try { Set-ProcessMitigation -System -Disable DEP,ForceRelocateImages,BottomUp,HighEntropy,SEHOP } catch { }" ^
   >>"%LOG%" 2>&1
 
 echo.

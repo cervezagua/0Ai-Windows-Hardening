@@ -1,11 +1,29 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
-title 0AI - Privacy ^& Security Kit (Apply v2.1)
+title 0AI - Privacy ^& Security Kit (Apply v2.2)
 
 REM =============================================================================
-REM 0AI_Apply_v2_1.bat
+REM 0AI_Apply_v2_2.bat
 REM
 REM SAFE FINAL RELEASE (no app-private hive edits; no undocumented hacks).
+REM
+REM v2.2 changes (relative to v2.1):
+REM   - Covers Windows 11 24H2 (26100.8246+) and 25H2 (26200.8246+) baselines
+REM     through the April 2026 cumulative KB5083769.
+REM   - A16: Hides the File Explorer "AI Actions" context menu (25H2+).
+REM   - A17: Hardens .rdp client behavior (April 2026 phishing mitigation).
+REM   - A18: Disables Narrator rich image descriptions (cloud-assisted; expanded
+REM          to all PCs in KB5083769).
+REM   - A19: Snapshots Microsoft.Windows.AI.* component versions for audit.
+REM   - B5:  Adds HKCU WindowsNotepad policy path.
+REM   - C4:  Reports Smart App Control state (KB5083769 removed the reinstall
+REM          requirement, but this script still does NOT force-enable SAC).
+REM   - [A1] now also writes HKLM WindowsCopilot (Pro SKUs ignore HKCU on 24H2+).
+REM   - [A2] extends WindowsAI hive with DisableCocreator / DisableGenerativeFill
+REM          / DisableImageCreator / TurnOffWindowsCopilot (25H2 catalog names).
+REM   - [A12] dropped: AllowLockScreenCamera is deprecated on 24H2+ (no-op).
+REM   - [C3] drops explicit CFG (system default since KB5066835) to avoid EDR
+REM          false positives; DEP/SEHOP/BottomUp/HighEntropy/ForceRelocate kept.
 REM
 REM What it does:
 REM   A) Core privacy + AI surface reduction:
@@ -143,6 +161,15 @@ reg export "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "%
 reg export "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\systemAIModels" "%BACKUPDIR%\HKLM_ConsentStore_systemAIModels.reg" /y >>"%LOG%" 2>&1
 reg export "HKCU\Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\systemAIModels" "%BACKUPDIR%\HKCU_ConsentStore_systemAIModels.reg" /y >>"%LOG%" 2>&1
 
+REM v2.2 additions
+reg export "HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer" "%BACKUPDIR%\HKLM_Policies_Explorer.reg" /y >>"%LOG%" 2>&1
+reg export "HKCU\Software\Policies\Microsoft\Windows\Explorer" "%BACKUPDIR%\HKCU_Policies_Explorer.reg" /y >>"%LOG%" 2>&1
+reg export "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" "%BACKUPDIR%\HKLM_Policies_WindowsCopilot.reg" /y >>"%LOG%" 2>&1
+reg export "HKCU\Software\Policies\Microsoft\Windows\WindowsNotepad" "%BACKUPDIR%\HKCU_Policies_WindowsNotepad.reg" /y >>"%LOG%" 2>&1
+reg export "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" "%BACKUPDIR%\HKLM_TerminalServices_Policy.reg" /y >>"%LOG%" 2>&1
+reg export "HKCU\Software\Microsoft\Terminal Server Client" "%BACKUPDIR%\HKCU_TerminalServerClient.reg" /y >>"%LOG%" 2>&1
+reg export "HKCU\Software\Microsoft\Narrator\NoRoam" "%BACKUPDIR%\HKCU_Narrator_NoRoam.reg" /y >>"%LOG%" 2>&1
+
 exit /b 0
 
 :: --------------------------- SECTION A ---------------------------------------
@@ -152,10 +179,11 @@ echo ===== SECTION A: Core privacy + AI surface reduction =====>>"%LOG%"
 echo.
 echo === A) Core privacy + AI surface reduction ===
 
-echo [A1] Disable Windows Copilot (shell integration)
+echo [A1] Disable Windows Copilot (shell integration) - HKCU + HKLM + WindowsAI
 reg add "HKCU\Software\Policies\Microsoft\Windows\WindowsCopilot" /v TurnOffWindowsCopilot /t REG_DWORD /d 1 /f >>"%LOG%" 2>&1
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" /v TurnOffWindowsCopilot /t REG_DWORD /d 1 /f >>"%LOG%" 2>&1
 
-echo [A2] WindowsAI policies: Recall/Click-to-Do/Settings agentic search
+echo [A2] WindowsAI policies: Recall / Click-to-Do / Settings agent / 25H2 generative-AI catalog
 reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI" /v AllowRecallEnablement /t REG_DWORD /d 0 /f >>"%LOG%" 2>&1
 reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI" /v AllowRecallExport /t REG_DWORD /d 0 /f >>"%LOG%" 2>&1
 reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI" /v DisableAIDataAnalysis /t REG_DWORD /d 1 /f >>"%LOG%" 2>&1
@@ -163,6 +191,11 @@ reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI" /v DisableClickToDo
 reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI" /v DisableRecallDataProviders /t REG_DWORD /d 1 /f >>"%LOG%" 2>&1
 reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI" /v DisableSettingsAgent /t REG_DWORD /d 1 /f >>"%LOG%" 2>&1
 reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI" /v DisableSettingsAgenticSearch /t REG_DWORD /d 1 /f >>"%LOG%" 2>&1
+REM v2.2: 25H2 Intune Settings Catalog names (mirror under WindowsAI hive for forward-compat)
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI" /v DisableCocreator /t REG_DWORD /d 1 /f >>"%LOG%" 2>&1
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI" /v DisableGenerativeFill /t REG_DWORD /d 1 /f >>"%LOG%" 2>&1
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI" /v DisableImageCreator /t REG_DWORD /d 1 /f >>"%LOG%" 2>&1
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI" /v TurnOffWindowsCopilot /t REG_DWORD /d 1 /f >>"%LOG%" 2>&1
 
 echo [A3] Best-effort: purge Recall data folder if present
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
@@ -181,11 +214,14 @@ reg add "HKCU\Software\Microsoft\InputPersonalization" /v RestrictImplicitTextCo
 reg add "HKCU\Software\Microsoft\InputPersonalization" /v RestrictImplicitInkCollection /t REG_DWORD /d 1 /f >>"%LOG%" 2>&1
 
 echo [A6] Telemetry minimization (DiagTrack + dmwappush)
+REM NOTE: AllowTelemetry=0 is only honored on Enterprise/Education SKUs.
+REM On Pro/Home it silently clamps to 1 (Required). See verification.txt for effective level.
 sc stop DiagTrack >>"%LOG%" 2>&1
 sc config DiagTrack start= disabled >>"%LOG%" 2>&1
 sc stop dmwappushservice >>"%LOG%" 2>&1
 sc config dmwappushservice start= disabled >>"%LOG%" 2>&1
 reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection" /v AllowTelemetry /t REG_DWORD /d 0 /f >>"%LOG%" 2>&1
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection" /v AllowTelemetry /t REG_DWORD /d 0 /f >>"%LOG%" 2>&1
 reg add "HKCU\Software\Microsoft\Siuf\Rules" /v NumberOfSIUFInPeriod /t REG_DWORD /d 0 /f >>"%LOG%" 2>&1
 reg add "HKCU\Software\Microsoft\Siuf\Rules" /v PeriodInNanoSeconds /t REG_DWORD /d 0 /f >>"%LOG%" 2>&1
 
@@ -220,8 +256,7 @@ reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\System" /v PublishUserActiviti
 reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\System" /v UploadUserActivities /t REG_DWORD /d 0 /f >>"%LOG%" 2>&1
 reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\System" /v AllowCrossDeviceClipboard /t REG_DWORD /d 0 /f >>"%LOG%" 2>&1
 
-echo [A12] Disable camera on lock screen
-reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\System" /v AllowLockScreenCamera /t REG_DWORD /d 0 /f >>"%LOG%" 2>&1
+REM [A12] removed in v2.2: AllowLockScreenCamera is deprecated on Windows 11 24H2+ (no-op).
 
 echo [A13] Disable Remote Desktop (hardening)
 reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 1 /f >>"%LOG%" 2>&1
@@ -233,6 +268,25 @@ reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v Sh
 
 echo [A15] Uninstall Phone Link + Cross-Device (installed + provisioned)
 call :REMOVE_PHONELINK
+
+echo [A16] Hide File Explorer "AI Actions" context menu (Windows 11 25H2+)
+REM Documented community-wide; Microsoft Learn page pending. Harmless on pre-25H2 builds.
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer" /v HideAIActionsMenu /t REG_DWORD /d 1 /f >>"%LOG%" 2>&1
+reg add "HKCU\Software\Policies\Microsoft\Windows\Explorer" /v HideAIActionsMenu /t REG_DWORD /d 1 /f >>"%LOG%" 2>&1
+
+echo [A17] Harden .rdp client behavior (April 2026 KB5083769 phishing mitigation surface)
+REM Complements [A13]: even with RDP service off, .rdp attachment attacks still open the client.
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" /v AllowSavedCredentials /t REG_DWORD /d 0 /f >>"%LOG%" 2>&1
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" /v AllowSavedCredentialsWhenNTLMOnly /t REG_DWORD /d 0 /f >>"%LOG%" 2>&1
+reg add "HKCU\Software\Microsoft\Terminal Server Client" /v RDGClientTransport /t REG_DWORD /d 0 /f >>"%LOG%" 2>&1
+
+echo [A18] Disable Narrator rich image descriptions (cloud-assisted; expanded to all PCs in KB5083769)
+reg add "HKCU\Software\Microsoft\Narrator\NoRoam" /v ImageDescriptionsEnabled /t REG_DWORD /d 0 /f >>"%LOG%" 2>&1
+
+echo [A19] Snapshot Microsoft.Windows.AI.* component versions for audit trail
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "try { Get-AppxPackage Microsoft.Windows.AI.* -ErrorAction SilentlyContinue | Select Name,Version,PackageFullName | Format-Table -AutoSize | Out-String | Out-File -Encoding UTF8 '%BACKUPDIR%\AI_Components.txt' } catch { }" ^
+  >>"%LOG%" 2>&1
 
 exit /b 0
 
@@ -247,6 +301,9 @@ echo [B1] Notepad AI policy keys (multi-namespace for coverage)
 REM Some Notepad builds may keep UI visible despite these keys.
 reg add "HKLM\SOFTWARE\Policies\Microsoft\Notepad" /v DisableAIFeatures /t REG_DWORD /d 1 /f >>"%LOG%" 2>&1
 reg add "HKLM\SOFTWARE\Policies\WindowsNotepad" /v DisableAIFeatures /t REG_DWORD /d 1 /f >>"%LOG%" 2>&1
+
+echo [B5] Notepad AI user-scope policy (recent Store builds read HKCU first)
+reg add "HKCU\Software\Policies\Microsoft\Windows\WindowsNotepad" /v DisableAIFeatures /t REG_DWORD /d 1 /f >>"%LOG%" 2>&1
 
 echo [B2] Paint: disable Cocreator / Generative Fill / Image Creator
 reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Paint" /v DisableCocreator /t REG_DWORD /d 1 /f >>"%LOG%" 2>&1
@@ -285,12 +342,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$ids='%ASR_IDS%'.Split(' '); foreach($id in $ids){ if($id){ try { Add-MpPreference -AttackSurfaceReductionRules_Ids $id -AttackSurfaceReductionRules_Actions Enabled } catch { } } }" ^
   >>"%LOG%" 2>&1
 
-echo [C3] Exploit Protection: enable safe system defaults (DEP/ASLR/SEHOP/CFG)
+echo [C3] Exploit Protection: enable safe system defaults (DEP/ASLR/SEHOP)
+REM v2.2: CFG dropped from explicit list - it's a system default since KB5066835
+REM and setting it explicitly occasionally produces EDR false positives.
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "try { Set-ProcessMitigation -System -Enable DEP,ForceRelocateImages,BottomUp,HighEntropy,SEHOP,CFG } catch { }" ^
+  "try { Set-ProcessMitigation -System -Enable DEP,ForceRelocateImages,BottomUp,HighEntropy,SEHOP } catch { }" ^
   >>"%LOG%" 2>&1
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "try { Get-ProcessMitigation -System | Out-File -Encoding UTF8 '%BACKUPDIR%\ExploitMitigation_after.txt' } catch { }" ^
+  >>"%LOG%" 2>&1
+
+echo [C4] Report Smart App Control state (KB5083769 allows toggling without reinstall; this script does NOT force it on)
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "try { (Get-MpComputerStatus | Select SmartAppControlState,SmartAppControlExpiration | Format-List | Out-String) | Out-File -Encoding UTF8 '%BACKUPDIR%\SmartAppControl_state.txt' } catch { 'Get-MpComputerStatus unavailable.' | Out-File -Encoding UTF8 '%BACKUPDIR%\SmartAppControl_state.txt' }" ^
   >>"%LOG%" 2>&1
 exit /b 0
 
@@ -315,8 +379,45 @@ exit /b 0
 :: --------------------------- VERIFICATION ------------------------------------
 :VERIFY_ALL
 echo.>>"%VERIFY%"
+echo --- OS build / display version --- >>"%VERIFY%"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' DisplayVersion,CurrentBuild,UBR,ProductName -ErrorAction SilentlyContinue | Format-List | Out-String)" ^
+  >>"%VERIFY%" 2>&1
+echo.>>"%VERIFY%"
+
+echo --- Effective telemetry level (SKU-dependent; Pro/Home clamp to 1) --- >>"%VERIFY%"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "try { $p=(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection' -ErrorAction SilentlyContinue).AllowTelemetry; 'AllowTelemetry (written)=' + $p } catch { }" ^
+  >>"%VERIFY%" 2>&1
+echo.>>"%VERIFY%"
+
 echo --- WindowsAI policy --- >>"%VERIFY%"
 reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI" >>"%VERIFY%" 2>&1
+echo.>>"%VERIFY%"
+
+echo --- Explorer AI Actions (HideAIActionsMenu) --- >>"%VERIFY%"
+reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer" /v HideAIActionsMenu >>"%VERIFY%" 2>&1
+reg query "HKCU\Software\Policies\Microsoft\Windows\Explorer" /v HideAIActionsMenu >>"%VERIFY%" 2>&1
+echo.>>"%VERIFY%"
+
+echo --- Installed AI components (Microsoft.Windows.AI.*) --- >>"%VERIFY%"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "try { Get-AppxPackage Microsoft.Windows.AI.* -ErrorAction SilentlyContinue | Select Name,Version | Format-Table -AutoSize | Out-String } catch { 'n/a' }" ^
+  >>"%VERIFY%" 2>&1
+echo.>>"%VERIFY%"
+
+echo --- Smart App Control state (report-only; NOT forced by this script) --- >>"%VERIFY%"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "try { (Get-MpComputerStatus | Select SmartAppControlState,SmartAppControlExpiration | Format-List | Out-String) } catch { 'Get-MpComputerStatus unavailable.' }" ^
+  >>"%VERIFY%" 2>&1
+echo.>>"%VERIFY%"
+
+echo --- Narrator rich image descriptions --- >>"%VERIFY%"
+reg query "HKCU\Software\Microsoft\Narrator\NoRoam" /v ImageDescriptionsEnabled >>"%VERIFY%" 2>&1
+echo.>>"%VERIFY%"
+
+echo --- Terminal Services (.rdp client) hardening --- >>"%VERIFY%"
+reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" >>"%VERIFY%" 2>&1
 echo.>>"%VERIFY%"
 
 echo --- Notepad policy keys written (UI may still remain on some builds) --- >>"%VERIFY%"
