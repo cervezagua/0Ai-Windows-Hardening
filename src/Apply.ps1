@@ -71,10 +71,11 @@ try {
 }
 
 # ---- Load modules ----
-Import-Module (Join-Path $moduleDir 'OAi.Engine.psm1') -Force
-Import-Module (Join-Path $moduleDir 'OAi.Runner.psm1') -Force
+Import-Module (Join-Path $moduleDir 'OAi.Engine.psm1')    -Force
+Import-Module (Join-Path $moduleDir 'OAi.Runner.psm1')    -Force
 Import-Module (Join-Path $moduleDir 'OAi.UI.Console.psm1') -Force
-Import-Module (Join-Path $moduleDir 'OAi.UI.Plan.psm1') -Force
+Import-Module (Join-Path $moduleDir 'OAi.UI.Plan.psm1')    -Force
+Import-Module (Join-Path $moduleDir 'OAi.UI.Launcher.psm1') -Force
 
 # ---- Manifest loader ----
 # Note: Import-PowerShellDataFile rejects top-level arrays. Our manifests are
@@ -120,6 +121,34 @@ foreach ($mf in $manifestFiles) {
     }
 }
 ('[+] Loaded {0} policies from {1} manifest files' -f $allPolicies.Count, $manifestFiles.Count) | Out-File -Encoding UTF8 -FilePath $LogFile -Append
+
+# ---- Interactive launcher (only when no CLI params were passed) ----
+# If the user double-clicks 0AI_Apply.cmd with no arguments, show the
+# dashboard picker. If they pass -Categories / -Select / -WhatIf on the
+# command line (automation / CI), skip the menu and honor the params.
+if ($PSBoundParameters.Count -eq 0) {
+    $decision = Show-LauncherMenu -Manifest $allPolicies.ToArray()
+    switch ($decision.Action) {
+        'quit' {
+            Write-Host '[i] Cancelled by user.'
+            exit 0
+        }
+        'verify' {
+            & (Join-Path $thisDir 'Verify.ps1')
+            exit $LASTEXITCODE
+        }
+        'revert' {
+            & (Join-Path $thisDir 'Revert.ps1')
+            exit $LASTEXITCODE
+        }
+        'apply' {
+            $Categories = $decision.Categories
+            $WhatIf     = [bool]$decision.WhatIf
+            ('[+] Launcher selection: Categories={0} WhatIf={1}' -f ($Categories -join ','), $WhatIf) |
+                Out-File -Encoding UTF8 -FilePath $LogFile -Append
+        }
+    }
+}
 
 # ---- Build plan ----
 $plan = New-Plan -Manifest $allPolicies.ToArray() -Categories $Categories -Selected $Select
