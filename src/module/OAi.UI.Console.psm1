@@ -9,6 +9,9 @@
 # StrictMode disabled for hashtable-heavy manifest handling
 $ErrorActionPreference = 'Stop'
 
+# PS 5.1 does not recognize `e as the escape character (added in PS 6). Use the
+# actual char so ANSI sequences render correctly on Windows PowerShell 5.1.
+$script:ESC     = [char]27
 $script:UIState = $null
 
 function Start-ConsoleUI {
@@ -92,14 +95,15 @@ function _Render-Event {
 
     $line = "{0} {1,6} ms  {2}  {3}" -f $tag, $Evt.Ms, $Evt.Id, $Evt.Msg
     if ($script:UIState.Ansi) {
+        $e = $script:ESC
         $color = switch ($Evt.Status) {
-            'ok'      { "`e[32m" }
-            'warn'    { "`e[33m" }
-            'error'   { "`e[31m" }
-            'skipped' { "`e[90m" }
-            default   { "`e[0m" }
+            'ok'      { "$e[32m" }
+            'warn'    { "$e[33m" }
+            'error'   { "$e[31m" }
+            'skipped' { "$e[90m" }
+            default   { "$e[0m" }
         }
-        Write-Host ("{0}{1}`e[0m" -f $color, $line)
+        Write-Host ("{0}{1}{2}[0m" -f $color, $line, $e)
     } else {
         Write-Host $line
     }

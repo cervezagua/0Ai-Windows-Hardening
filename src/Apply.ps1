@@ -76,13 +76,43 @@ Import-Module (Join-Path $moduleDir 'OAi.Runner.psm1') -Force
 Import-Module (Join-Path $moduleDir 'OAi.UI.Console.psm1') -Force
 Import-Module (Join-Path $moduleDir 'OAi.UI.Plan.psm1') -Force
 
+# ---- Manifest loader ----
+# Note: Import-PowerShellDataFile rejects top-level arrays. Our manifests are
+# @(...) at the top level, so we parse via AST and call SafeGetValue(), which
+# is the PS-supported "constrained literal eval" path (PS 5.1+).
+function _Collect-Hashtables {
+    param($Val, [System.Collections.Generic.List[object]]$Acc)
+    if ($null -eq $Val) { return }
+    if ($Val -is [System.Collections.IDictionary]) { [void]$Acc.Add($Val); return }
+    if ($Val -is [System.Collections.IEnumerable] -and $Val -isnot [string]) {
+        foreach ($v in $Val) { _Collect-Hashtables -Val $v -Acc $Acc }
+        return
+    }
+    # scalar: ignore
+}
+function _Load-PolicyManifest {
+    param([string]$Path)
+    $tokens = $null
+    $errs   = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($Path, [ref]$tokens, [ref]$errs)
+    if ($errs -and @($errs).Count -gt 0) {
+        throw ('parse error in {0}: {1}' -f (Split-Path -Leaf $Path), @($errs)[0].Message)
+    }
+    $stmts = @($ast.EndBlock.Statements)
+    if ($stmts.Count -eq 0) { return ,@() }
+    $val = $stmts[0].PipelineElements[0].Expression.SafeGetValue()
+    $acc = New-Object System.Collections.Generic.List[object]
+    _Collect-Hashtables -Val $val -Acc $acc
+    return ,$acc.ToArray()
+}
+
 # ---- Load manifest ----
 $manifestFiles = Get-ChildItem -Path $manifestDir -Filter '*.psd1' -ErrorAction Stop
 $allPolicies = New-Object System.Collections.Generic.List[object]
 foreach ($mf in $manifestFiles) {
     try {
-        $data = Import-PowerShellDataFile -Path $mf.FullName
-        foreach ($p in @($data)) {
+        $data = _Load-PolicyManifest -Path $mf.FullName
+        foreach ($p in $data) {
             if ($null -ne $p) { $allPolicies.Add($p) }
         }
     } catch {

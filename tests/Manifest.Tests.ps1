@@ -14,13 +14,40 @@ $ValidKinds      = @('Registry','Service','AppxRemove','DefenderPref','DefenderA
 $ManifestRoot = Join-Path (Split-Path -Parent $PSCommandPath) '..\src\manifest'
 $ManifestRoot = (Resolve-Path $ManifestRoot).Path
 
+function _Collect-Hashtables {
+    param($Val, [System.Collections.Generic.List[object]]$Acc)
+    if ($null -eq $Val) { return }
+    if ($Val -is [System.Collections.IDictionary]) { [void]$Acc.Add($Val); return }
+    if ($Val -is [System.Collections.IEnumerable] -and $Val -isnot [string]) {
+        foreach ($v in $Val) { _Collect-Hashtables -Val $v -Acc $Acc }
+        return
+    }
+}
+function _Load-PolicyManifest {
+    # Import-PowerShellDataFile rejects top-level arrays. Parse via AST + SafeGetValue.
+    param([string]$Path)
+    $tokens = $null
+    $errs   = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($Path, [ref]$tokens, [ref]$errs)
+    if ($errs -and @($errs).Count -gt 0) {
+        throw ('parse error in {0}: {1}' -f (Split-Path -Leaf $Path), @($errs)[0].Message)
+    }
+    $stmts = @($ast.EndBlock.Statements)
+    if ($stmts.Count -eq 0) { return ,@() }
+    $val = $stmts[0].PipelineElements[0].Expression.SafeGetValue()
+    $acc = New-Object System.Collections.Generic.List[object]
+    _Collect-Hashtables -Val $val -Acc $acc
+    return ,$acc.ToArray()
+}
+
 function Get-AllPolicies {
     $out = New-Object System.Collections.Generic.List[object]
     Get-ChildItem -Path $ManifestRoot -Filter '*.psd1' | ForEach-Object {
-        $data = Import-PowerShellDataFile -Path $_.FullName
-        foreach ($p in @($data)) {
+        $file = $_
+        $data = _Load-PolicyManifest -Path $file.FullName
+        foreach ($p in $data) {
             if ($p) {
-                $p['_SourceFile'] = $_.Name
+                $p['_SourceFile'] = $file.Name
                 $out.Add($p)
             }
         }
