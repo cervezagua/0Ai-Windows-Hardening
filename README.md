@@ -1,7 +1,7 @@
 # 0AI - Windows Hardening Kit
 
 ### Windows 11 Privacy, AI Disablement & Security Hardening
-**Version:** `v2.3`
+**Version:** `v2.4`
 
 **Supported baselines:** Windows 11 24H2 (OS Build **26100.8246+**) and 25H2
 (OS Build **26200.8246+**), through the **April 2026 cumulative KB5083769**.
@@ -14,17 +14,22 @@ AI Actions) are no-ops.
 
 ---
 
-## Quick Start (v2.3)
+## Quick Start (v2.4)
 
 ### Apply
 1. **Right-click** `0AI_Apply.cmd`
 2. Select **Run as Administrator**
-3. Wait for the console progress to finish
-4. **Reboot** when done
+3. An interactive picker appears — use `Up/Down` to move, `SPACE` to
+   toggle a category, `D` to toggle dry-run, `ENTER` to run, `Q` to quit
+4. Wait for the console progress to finish
+5. **Reboot** when done
 
-By default this runs categories `AI`, `PRIV`, `HARD`, and `AUDIT`. It does
-**not** run `DEBLOAT` (destructive Appx removal) unless you explicitly ask
-for it.
+By default the picker pre-selects `AI`, `PRIV`, `HARD`, and `AUDIT`. It
+leaves `DEBLOAT` (destructive Appx removal) **off** — toggle it on with
+`SPACE` if you want it.
+
+The picker is skipped if you pass any parameters on the command line, so
+automation and CI still work unchanged:
 
 ```cmd
 REM Include Widgets + Phone Link removal (not reinstallable via revert):
@@ -70,6 +75,19 @@ the manifest. No changes.
 reinstalled by `Revert.ps1`. Opt in only if you're comfortable with that.
 
 ---
+
+## What's new in v2.4
+
+- **Interactive launcher picker**. Double-clicking `0AI_Apply.cmd` no
+  longer runs straight to the engine — it opens an arrow-key / SPACE
+  checkbox picker so you can choose which categories to apply without
+  typing a command line. `DEBLOAT` is still off by default and flagged
+  in red. Passing any CLI parameter (`-Categories`, `-Select`,
+  `-WhatIf`) skips the picker, so automation is unaffected. Defined in
+  `src/module/OAi.UI.Launcher.psm1`.
+- **Codepage fix in the launcher**: `0AI_Apply.cmd` now sets
+  `chcp 65001` before spawning PowerShell so the box-drawing characters
+  in the picker render cleanly on default conhost.
 
 ## What's new in v2.3
 
@@ -150,7 +168,7 @@ prompt or sign them yourself.
 |   |-- Revert.ps1
 |   |-- Verify.ps1
 |   |-- manifest/            data: one .psd1 per category
-|   `-- module/              engine + runner + UI
+|   `-- module/              engine + runner + UI + launcher picker
 |-- tests/Manifest.Tests.ps1
 |-- docs/ARCHITECTURE.md
 |-- legacy/                  v2.2 .bat scripts, preserved for reference
