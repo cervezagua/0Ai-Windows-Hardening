@@ -120,11 +120,11 @@ _Print-Header 'Current state of kit-managed keys'
 $checks = @(
     @{ Hive='HKLM'; Key='SOFTWARE\Policies\Microsoft\Windows\Explorer'; Value='HideAIActionsMenu' }
     @{ Hive='HKCU'; Key='Software\Policies\Microsoft\Windows\Explorer'; Value='HideAIActionsMenu' }
-    @{ Hive='HKLM'; Key='SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Paint'; Value='DisableRemoveBackground' }
-    @{ Hive='HKLM'; Key='SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Paint'; Value='DisableGenerativeErase' }
-    @{ Hive='HKLM'; Key='SOFTWARE\Policies\Microsoft\Windows\Photos'; Value='DisableAIEditing' }
-    @{ Hive='HKLM'; Key='SOFTWARE\Policies\Microsoft\Windows\Photos'; Value='DisableBlurBackground' }
-    @{ Hive='HKLM'; Key='SOFTWARE\Policies\Microsoft\Windows\Photos'; Value='DisableEraseObjects' }
+    @{ Hive='HKLM'; Key='SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Paint'; Value='DisableCocreator' }
+    @{ Hive='HKLM'; Key='SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Paint'; Value='DisableGenerativeFill' }
+    @{ Hive='HKLM'; Key='SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Paint'; Value='DisableImageCreator' }
+    @{ Hive='HKLM'; Key='SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\systemAIModels'; Value='Value' }
+    @{ Hive='HKCU'; Key='Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\systemAIModels'; Value='Value' }
 )
 foreach ($c in $checks) {
     $full = ($c.Hive + ':\' + $c.Key)
