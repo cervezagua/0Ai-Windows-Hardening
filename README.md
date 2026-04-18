@@ -1,7 +1,7 @@
 # 0AI - Windows Hardening Kit
 
 ### Windows 11 Privacy, AI Disablement & Security Hardening
-**Version:** `v2.4`
+**Version:** `v2.5`
 
 **Supported baselines:** Windows 11 24H2 (OS Build **26100.8246+**) and 25H2
 (OS Build **26200.8246+**), through the **April 2026 cumulative KB5083769**.
@@ -14,7 +14,7 @@ AI Actions) are no-ops.
 
 ---
 
-## Quick Start (v2.4)
+## Quick Start (v2.5)
 
 ### Apply
 1. **Right-click** `0AI_Apply.cmd`
@@ -65,7 +65,7 @@ the manifest. No changes.
 
 | Code      | Name                               | Default? | What it does                                                                 |
 |-----------|------------------------------------|----------|------------------------------------------------------------------------------|
-| `AI`      | Disable AI across the OS           | yes      | Copilot, Recall, Click-to-Do, Paint AI, Notepad AI, Edge AI, `systemAIModels=Deny` |
+| `AI`      | Disable AI across the OS           | yes      | Copilot, Recall, Click-to-Do, Paint AI (incl. Remove Background / Generative Erase), Photos AI (Blur / Erase Objects), Notepad AI, Edge AI, `systemAIModels=Deny` |
 | `PRIV`    | Privacy & telemetry                | yes      | DiagTrack/dmwappush off, AllowTelemetry, Advertising ID, WER, Activity History, sync banners, online speech recognition, Cloud Content / Spotlight / consumer features, Tailored Experiences, online tips, Find My Device, feedback notifications |
 | `HARD`    | Security hardening                 | yes      | RDP off, Restricted Admin, Defender PUA + ASR subset, Exploit Protection     |
 | `DEBLOAT` | Remove bundled apps (destructive)  | **no**   | Widgets / WebExperience, Phone Link / YourPhone / CrossDevice                |
@@ -75,6 +75,33 @@ the manifest. No changes.
 reinstalled by `Revert.ps1`. Opt in only if you're comfortable with that.
 
 ---
+
+## What's new in v2.5
+
+- **Cover the File Explorer "AI actions" submenu on images**. Right-click
+  an image on Win11 25H2 and you still get a submenu offering
+  "Generative erase" / "Remove background" / "Blur background" /
+  "Erase objects". The v2.4 kit wrote `HideAIActionsMenu=1`, but
+  Microsoft effectively stopped honoring that key on builds **26200+**,
+  so the menu still shows up and clicking an entry runs the AI edit.
+  v2.5 adds five new policies that block the **underlying AI features**
+  that those menu entries invoke:
+  - `AI.Paint.DisableRemoveBackground`
+  - `AI.Paint.DisableGenerativeErase`
+  - `AI.Photos.DisableAIEditing` (umbrella)
+  - `AI.Photos.DisableBlurBackground`
+  - `AI.Photos.DisableEraseObjects`
+  On 26200+ the menu entry may still be visible; clicking it should
+  fail or the in-app AI feature should be greyed out. The legacy
+  `HideAIActionsMenu` entries are retained and re-labelled to say
+  "best-effort; bypassed on 26200+".
+- **New diagnostic `src/Snapshot-AIShellVerbs.ps1`**. Read-only.
+  Enumerates the shell verbs registered under
+  `HKLM\SOFTWARE\Classes\SystemFileAssociations\image\Shell` (and
+  related), plus the current state of the kit-managed AI-action keys,
+  so we can target specific shell registrations in a future bump if
+  needed. Run it with
+  `powershell -NoProfile -File src\Snapshot-AIShellVerbs.ps1`.
 
 ## What's new in v2.4
 
@@ -142,6 +169,12 @@ No v2.2 policy was dropped. The `HideAIActionsMenu` entry is labelled
 - Does **not** reinstall removed Appx packages on revert.
 - Does **not** make any network calls.
 - Does **not** touch app-private storage or undocumented registry keys.
+- Does **not** guarantee the "AI actions" submenu **disappears** from
+  the image right-click on Win11 25H2 26200+. The kit blocks the
+  underlying Paint/Photos AI features those entries invoke, but the
+  visible entry itself depends on a shell registration Microsoft no
+  longer gates on policy. Run `src/Snapshot-AIShellVerbs.ps1` and
+  share the output if you want that tracked for a future bump.
 
 These are intentional design choices.
 

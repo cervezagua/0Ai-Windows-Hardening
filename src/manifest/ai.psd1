@@ -359,7 +359,7 @@
         Id          = 'AI.Explorer.HideAIActionsMenu.HKLM'
         Category    = 'AI'
         Group       = 'reg-safe'
-        Description = 'Hide File Explorer AI Actions context menu (HKLM)'
+        Description = 'Hide File Explorer AI Actions menu (HKLM, best-effort; bypassed on 26200+)'
         MinBuild    = 26200
         Kind        = 'Registry'
         Hive        = 'HKLM'
@@ -376,7 +376,7 @@
         Id          = 'AI.Explorer.HideAIActionsMenu.HKCU'
         Category    = 'AI'
         Group       = 'reg-safe'
-        Description = 'Hide File Explorer AI Actions context menu (HKCU)'
+        Description = 'Hide File Explorer AI Actions menu (HKCU, best-effort; bypassed on 26200+)'
         MinBuild    = 26200
         Kind        = 'Registry'
         Hive        = 'HKCU'
@@ -513,6 +513,95 @@
         Data        = 1
         DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-paint'
         Confidence  = 'Documented'
+        Reversible  = $true
+        Destructive = $false
+    },
+
+    # ---- [B2a] Paint image-editing AI (right-click "AI actions" surface) ----
+    @{
+        Id          = 'AI.Paint.DisableRemoveBackground'
+        Category    = 'AI'
+        Group       = 'reg-safe'
+        Description = 'Disable Paint "Remove background" (File Explorer AI action)'
+        MinBuild    = 0
+        Kind        = 'Registry'
+        Hive        = 'HKLM'
+        Key         = 'SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Paint'
+        Value       = 'DisableRemoveBackground'
+        Type        = 'DWord'
+        Data        = 1
+        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-paint'
+        Confidence  = 'Community'
+        Reversible  = $true
+        Destructive = $false
+    },
+    @{
+        Id          = 'AI.Paint.DisableGenerativeErase'
+        Category    = 'AI'
+        Group       = 'reg-safe'
+        Description = 'Disable Paint "Generative erase" (File Explorer AI action)'
+        MinBuild    = 0
+        Kind        = 'Registry'
+        Hive        = 'HKLM'
+        Key         = 'SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Paint'
+        Value       = 'DisableGenerativeErase'
+        Type        = 'DWord'
+        Data        = 1
+        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-paint'
+        Confidence  = 'Community'
+        Reversible  = $true
+        Destructive = $false
+    },
+
+    # ---- [B2b] Photos AI (right-click "AI actions" surface + in-app) ----
+    @{
+        Id          = 'AI.Photos.DisableAIEditing'
+        Category    = 'AI'
+        Group       = 'reg-safe'
+        Description = 'Disable Photos AI editing umbrella'
+        MinBuild    = 0
+        Kind        = 'Registry'
+        Hive        = 'HKLM'
+        Key         = 'SOFTWARE\Policies\Microsoft\Windows\Photos'
+        Value       = 'DisableAIEditing'
+        Type        = 'DWord'
+        Data        = 1
+        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-configuration-service-provider'
+        Confidence  = 'Community'
+        Reversible  = $true
+        Destructive = $false
+    },
+    @{
+        Id          = 'AI.Photos.DisableBlurBackground'
+        Category    = 'AI'
+        Group       = 'reg-safe'
+        Description = 'Disable Photos "Blur background" (File Explorer AI action)'
+        MinBuild    = 0
+        Kind        = 'Registry'
+        Hive        = 'HKLM'
+        Key         = 'SOFTWARE\Policies\Microsoft\Windows\Photos'
+        Value       = 'DisableBlurBackground'
+        Type        = 'DWord'
+        Data        = 1
+        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-configuration-service-provider'
+        Confidence  = 'Community'
+        Reversible  = $true
+        Destructive = $false
+    },
+    @{
+        Id          = 'AI.Photos.DisableEraseObjects'
+        Category    = 'AI'
+        Group       = 'reg-safe'
+        Description = 'Disable Photos "Erase objects" (File Explorer AI action)'
+        MinBuild    = 0
+        Kind        = 'Registry'
+        Hive        = 'HKLM'
+        Key         = 'SOFTWARE\Policies\Microsoft\Windows\Photos'
+        Value       = 'DisableEraseObjects'
+        Type        = 'DWord'
+        Data        = 1
+        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-configuration-service-provider'
+        Confidence  = 'Community'
         Reversible  = $true
         Destructive = $false
     },

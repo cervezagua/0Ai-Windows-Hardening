@@ -1,5 +1,5 @@
 #
-# OAi.UI.Launcher.psm1 - v2.4 arrow-key picker for 0AI Apply (Design 2)
+# OAi.UI.Launcher.psm1 - v2.5 arrow-key picker for 0AI Apply (Design 2)
 #
 # Light-line box + arrow-key + checkbox picker. Shows when the user
 # double-clicks 0AI_Apply.cmd with no arguments.
