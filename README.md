@@ -65,7 +65,7 @@ the manifest. No changes.
 
 | Code      | Name                               | Default? | What it does                                                                 |
 |-----------|------------------------------------|----------|------------------------------------------------------------------------------|
-| `AI`      | Disable AI across the OS           | yes      | Copilot, Recall, Click-to-Do, Paint AI (incl. Remove Background / Generative Erase), Photos AI (Blur / Erase Objects), Notepad AI, Edge AI, `systemAIModels=Deny` |
+| `AI`      | Disable AI across the OS           | yes      | Copilot, Recall, Click-to-Do, Paint AI, Notepad AI, Edge AI, `systemAIModels=Deny` |
 | `PRIV`    | Privacy & telemetry                | yes      | DiagTrack/dmwappush off, AllowTelemetry, Advertising ID, WER, Activity History, sync banners, online speech recognition, Cloud Content / Spotlight / consumer features, Tailored Experiences, online tips, Find My Device, feedback notifications |
 | `HARD`    | Security hardening                 | yes      | RDP off, Restricted Admin, Defender PUA + ASR subset, Exploit Protection     |
 | `DEBLOAT` | Remove bundled apps (destructive)  | **no**   | Widgets / WebExperience, Phone Link / YourPhone / CrossDevice                |
@@ -78,29 +78,22 @@ reinstalled by `Revert.ps1`. Opt in only if you're comfortable with that.
 
 ## What's new in v2.5
 
-- **Cover the File Explorer "AI actions" submenu on images**. Right-click
-  an image on Win11 25H2 and you still get a submenu offering
-  "Generative erase" / "Remove background" / "Blur background" /
-  "Erase objects". The v2.4 kit wrote `HideAIActionsMenu=1`, but
-  Microsoft effectively stopped honoring that key on builds **26200+**,
-  so the menu still shows up and clicking an entry runs the AI edit.
-  v2.5 adds five new policies that block the **underlying AI features**
-  that those menu entries invoke:
-  - `AI.Paint.DisableRemoveBackground`
-  - `AI.Paint.DisableGenerativeErase`
-  - `AI.Photos.DisableAIEditing` (umbrella)
-  - `AI.Photos.DisableBlurBackground`
-  - `AI.Photos.DisableEraseObjects`
-  On 26200+ the menu entry may still be visible; clicking it should
-  fail or the in-app AI feature should be greyed out. The legacy
-  `HideAIActionsMenu` entries are retained and re-labelled to say
-  "best-effort; bypassed on 26200+".
+- **Honest labelling of the AI actions menu gap**. The
+  `HideAIActionsMenu=1` policy that was supposed to hide the
+  right-click "AI actions" submenu on images is confirmed **not
+  effective on build 26200**. Microsoft only wired it starting at
+  build 26220.7344+. There is **no working registry fix** on 26200 —
+  the menu and its actions (Generative erase, Remove background, Blur
+  background, Erase objects) remain functional. The existing
+  `HideAIActionsMenu` entries are retained (they'll work once your
+  build updates to 26220+) and re-labelled to say "best-effort;
+  bypassed on 26200+".
 - **New diagnostic `src/Snapshot-AIShellVerbs.ps1`**. Read-only.
   Enumerates the shell verbs registered under
   `HKLM\SOFTWARE\Classes\SystemFileAssociations\image\Shell` (and
   related), plus the current state of the kit-managed AI-action keys,
-  so we can target specific shell registrations in a future bump if
-  needed. Run it with
+  so we can target specific shell registrations if a workaround is
+  found. Run it with
   `powershell -NoProfile -File src\Snapshot-AIShellVerbs.ps1`.
 
 ## What's new in v2.4
@@ -169,12 +162,11 @@ No v2.2 policy was dropped. The `HideAIActionsMenu` entry is labelled
 - Does **not** reinstall removed Appx packages on revert.
 - Does **not** make any network calls.
 - Does **not** touch app-private storage or undocumented registry keys.
-- Does **not** guarantee the "AI actions" submenu **disappears** from
-  the image right-click on Win11 25H2 26200+. The kit blocks the
-  underlying Paint/Photos AI features those entries invoke, but the
-  visible entry itself depends on a shell registration Microsoft no
-  longer gates on policy. Run `src/Snapshot-AIShellVerbs.ps1` and
-  share the output if you want that tracked for a future bump.
+- Does **not** hide the "AI actions" submenu from the image right-click
+  on Win11 25H2 build 26200. Microsoft did not wire the
+  `HideAIActionsMenu` policy on that build — there is no registry fix
+  until build 26220+. Once your OS updates to 26220+, the existing
+  `HideAIActionsMenu` entries will take effect.
 
 These are intentional design choices.
 
