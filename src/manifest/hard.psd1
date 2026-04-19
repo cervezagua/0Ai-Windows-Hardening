@@ -211,10 +211,10 @@
         Id          = 'HARD.Mitigation.System'
         Category    = 'HARD'
         Group       = 'mitigation'
-        Description = 'System-wide exploit mitigations (DEP/SEHOP/BottomUp/HighEntropy/ForceRelocate)'
+        Description = 'System-wide exploit mitigations (DEP/SEHOP/BottomUp/HighEntropy)'
         MinBuild    = 0
         Kind        = 'Mitigation'
-        Enable      = @('DEP', 'ForceRelocateImages', 'BottomUp', 'HighEntropy', 'SEHOP')
+        Enable      = @('DEP', 'BottomUp', 'HighEntropy', 'SEHOP')
         Disable     = @()
         DocUrl      = 'https://learn.microsoft.com/defender-endpoint/exploit-protection-reference'
         Confidence  = 'Documented'
