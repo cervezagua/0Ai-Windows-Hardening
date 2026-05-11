@@ -163,6 +163,40 @@
         Destructive = $false
     },
 
+    # ---- [A2a] IsoEnvBroker: experimental agentic features framework ----
+    @{
+        Id          = 'AI.IsoEnvBroker.Enabled'
+        Category    = 'AI'
+        Group       = 'reg-safe'
+        Description = 'Disable experimental agentic features broker (IsoEnvBroker)'
+        MinBuild    = 26200
+        Kind        = 'Registry'
+        Hive        = 'HKLM'
+        Key         = 'SYSTEM\CurrentControlSet\Services\IsoEnvBroker'
+        Value       = 'Enabled'
+        Type        = 'DWord'
+        Data        = 0
+        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-windowsai'
+        Confidence  = 'Documented'
+        Reversible  = $true
+        Destructive = $false
+    },
+    @{
+        Id          = 'AI.Service.IsoEnvBroker'
+        Category    = 'AI'
+        Group       = 'sc-safe'
+        Description = 'Stop and disable IsoEnvBroker (agentic features broker service)'
+        MinBuild    = 26200
+        Kind        = 'Service'
+        Name        = 'IsoEnvBroker'
+        State       = 'Stopped'
+        StartupType = 'Disabled'
+        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-windowsai'
+        Confidence  = 'Documented'
+        Reversible  = $true
+        Destructive = $false
+    },
+
     # ---- [A3] Recall data folder purge ----
     @{
         Id          = 'AI.Recall.PurgeDataFolder'

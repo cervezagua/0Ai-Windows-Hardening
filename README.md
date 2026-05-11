@@ -1,12 +1,12 @@
 # 0AI - Windows Hardening Kit
 
 ### Windows 11 Privacy, AI Disablement & Security Hardening
-**Version:** `v2.5`
+**Version:** `v2.6`
 
-**Supported baselines:** Windows 11 24H2 (OS Build **26100.8246+**) and 25H2
-(OS Build **26200.8246+**), through the **April 2026 cumulative KB5083769**.
+**Supported baselines:** Windows 11 24H2 (OS Build **26100.8328+**) and 25H2
+(OS Build **26200.8328+**), through the **April 2026 preview KB5083631**.
 Earlier builds still work but the 25H2-specific switches (e.g. File Explorer
-AI Actions) are no-ops.
+AI Actions, IsoEnvBroker) are no-ops.
 
 > **v2.2 users**: the legacy `.bat` scripts are preserved under `legacy/` and
 > still work. v2.3 is a PowerShell-first rewrite with the same effective
@@ -65,7 +65,7 @@ the manifest. No changes.
 
 | Code      | Name                               | Default? | What it does                                                                 |
 |-----------|------------------------------------|----------|------------------------------------------------------------------------------|
-| `AI`      | Disable AI across the OS           | yes      | Copilot, Recall, Click-to-Do, Paint AI (incl. Remove Background / Generative Erase), Photos AI (Blur / Erase Objects), Notepad AI, Edge AI, `systemAIModels=Deny` |
+| `AI`      | Disable AI across the OS           | yes      | Copilot, Recall, Click-to-Do, IsoEnvBroker (agentic framework), Paint AI (incl. Remove Background / Generative Erase), Photos AI (Blur / Erase Objects), Notepad AI, Edge AI, `systemAIModels=Deny` |
 | `PRIV`    | Privacy & telemetry                | yes      | DiagTrack/dmwappush off, AllowTelemetry, Advertising ID, WER, Activity History, sync banners, online speech recognition, Cloud Content / Spotlight / consumer features, Tailored Experiences, online tips, Find My Device, feedback notifications |
 | `HARD`    | Security hardening                 | yes      | RDP off, Restricted Admin, Defender PUA + ASR subset, Exploit Protection     |
 | `DEBLOAT` | Remove bundled apps (destructive)  | **no**   | Widgets / WebExperience, Phone Link / YourPhone / CrossDevice                |
@@ -75,6 +75,23 @@ the manifest. No changes.
 reinstalled by `Revert.ps1`. Opt in only if you're comfortable with that.
 
 ---
+
+## What's new in v2.6
+
+- **Baseline bumped to KB5083631** (April 30 2026 preview, builds
+  26100.8328 / 26200.8328).
+- **IsoEnvBroker disabled** (2 new policies). KB5083631 introduces
+  taskbar-based AI agent monitoring and a system-level "experimental
+  agentic features" broker service (`IsoEnvBroker`). The kit now
+  disables the broker via its `Enabled` registry value **and**
+  stops + disables the service, preventing background AI agents
+  (including third-party ones) from running through the Windows
+  agentic framework.
+- **Mandatory ASLR removed** from `HARD.Mitigation.System`.
+  `ForceRelocateImages` broke Cygwin/MSYS2-based tools (Git for
+  Windows, etc.) by randomizing DLL load addresses that `fork()`
+  requires to be fixed. The remaining mitigations (DEP, BottomUp,
+  HighEntropy, SEHOP) are unaffected.
 
 ## What's new in v2.5
 
