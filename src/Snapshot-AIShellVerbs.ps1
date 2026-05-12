@@ -1,5 +1,5 @@
 #
-# 0AI v2.5 - Snapshot-AIShellVerbs.ps1
+# 0AI v2.6 - Snapshot-AIShellVerbs.ps1
 #
 # Read-only diagnostic. Enumerates the shell verbs and COM registrations
 # that Microsoft uses to expose the "AI actions" submenu when you
@@ -123,8 +123,14 @@ $checks = @(
     @{ Hive='HKLM'; Key='SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Paint'; Value='DisableCocreator' }
     @{ Hive='HKLM'; Key='SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Paint'; Value='DisableGenerativeFill' }
     @{ Hive='HKLM'; Key='SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Paint'; Value='DisableImageCreator' }
+    @{ Hive='HKLM'; Key='SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Paint'; Value='DisableRemoveBackground' }
+    @{ Hive='HKLM'; Key='SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Paint'; Value='DisableGenerativeErase' }
+    @{ Hive='HKLM'; Key='SOFTWARE\Policies\Microsoft\Windows\Photos'; Value='DisableAIEditing' }
+    @{ Hive='HKLM'; Key='SOFTWARE\Policies\Microsoft\Windows\Photos'; Value='DisableBlurBackground' }
+    @{ Hive='HKLM'; Key='SOFTWARE\Policies\Microsoft\Windows\Photos'; Value='DisableEraseObjects' }
     @{ Hive='HKLM'; Key='SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\systemAIModels'; Value='Value' }
     @{ Hive='HKCU'; Key='Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\systemAIModels'; Value='Value' }
+    @{ Hive='HKLM'; Key='SYSTEM\CurrentControlSet\Services\IsoEnvBroker'; Value='Enabled' }
 )
 foreach ($c in $checks) {
     $full = ($c.Hive + ':\' + $c.Key)
