@@ -220,5 +220,24 @@
         Confidence  = 'Documented'
         Reversible  = $true
         Destructive = $false
+    },
+
+    # ---- [C4] Batch file secure mode ----
+    @{
+        Id          = 'HARD.CommandProcessor.LockBatchFilesWhenInUse'
+        Category    = 'HARD'
+        Group       = 'reg-safe'
+        Description = 'Lock batch files during execution (prevent runtime tampering)'
+        MinBuild    = 26200
+        Kind        = 'Registry'
+        Hive        = 'HKLM'
+        Key         = 'SOFTWARE\Microsoft\Command Processor'
+        Value       = 'LockBatchFilesWhenInUse'
+        Type        = 'DWord'
+        Data        = 1
+        DocUrl      = 'https://learn.microsoft.com/windows/security/application-security/application-control/app-control-for-business/appcontrol-and-virtualization-based-code-integrity'
+        Confidence  = 'Documented'
+        Reversible  = $true
+        Destructive = $false
     }
 )
