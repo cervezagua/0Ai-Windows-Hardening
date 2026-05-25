@@ -42,6 +42,25 @@
         Destructive = $false
     },
 
+    # ---- [A1a] Remove Copilot app (25H2+, Pro/Enterprise/Education) ----
+    @{
+        Id          = 'AI.WindowsCopilot.RemoveMicrosoftCopilotApp'
+        Category    = 'AI'
+        Group       = 'reg-safe'
+        Description = 'Remove Microsoft Copilot app (uninstalls binary if unused 28 days)'
+        MinBuild    = 26200
+        Kind        = 'Registry'
+        Hive        = 'HKLM'
+        Key         = 'SOFTWARE\Policies\Microsoft\Windows\WindowsAI'
+        Value       = 'RemoveMicrosoftCopilotApp'
+        Type        = 'DWord'
+        Data        = 1
+        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-windowsai'
+        Confidence  = 'Documented'
+        Reversible  = $true
+        Destructive = $false
+    },
+
     # ---- [A2] WindowsAI: Recall / Click-to-Do / Settings agent ----
     @{
         Id          = 'AI.WindowsAI.AllowRecallEnablement'

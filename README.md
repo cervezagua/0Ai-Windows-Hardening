@@ -1,12 +1,12 @@
 # 0AI - Windows Hardening Kit
 
 ### Windows 11 Privacy, AI Disablement & Security Hardening
-**Version:** `v2.6`
+**Version:** `v2.7`
 
-**Supported baselines:** Windows 11 24H2 (OS Build **26100.8328+**) and 25H2
-(OS Build **26200.8328+**), through the **April 2026 preview KB5083631**.
+**Supported baselines:** Windows 11 24H2 (OS Build **26100.8457+**) and 25H2
+(OS Build **26200.8457+**), through the **May 2026 Patch Tuesday KB5089549**.
 Earlier builds still work but the 25H2-specific switches (e.g. File Explorer
-AI Actions, IsoEnvBroker) are no-ops.
+AI Actions, IsoEnvBroker, RemoveMicrosoftCopilotApp) are no-ops.
 
 > **v2.2 users**: the legacy `.bat` scripts are preserved under `legacy/` and
 > still work. v2.3 is a PowerShell-first rewrite with the same effective
@@ -65,9 +65,9 @@ the manifest. No changes.
 
 | Code      | Name                               | Default? | What it does                                                                 |
 |-----------|------------------------------------|----------|------------------------------------------------------------------------------|
-| `AI`      | Disable AI across the OS           | yes      | Copilot, Recall, Click-to-Do, IsoEnvBroker (agentic framework), Paint AI (incl. Remove Background / Generative Erase), Photos AI (Blur / Erase Objects), Notepad AI, Edge AI, `systemAIModels=Deny` |
+| `AI`      | Disable AI across the OS           | yes      | Copilot (disable + remove app), Recall, Click-to-Do, IsoEnvBroker (agentic framework), Paint AI (incl. Remove Background / Generative Erase), Photos AI (Blur / Erase Objects), Notepad AI, Edge AI, `systemAIModels=Deny` |
 | `PRIV`    | Privacy & telemetry                | yes      | DiagTrack/dmwappush off, AllowTelemetry, Advertising ID, WER, Activity History, sync banners, online speech recognition, Cloud Content / Spotlight / consumer features, Tailored Experiences, online tips, Find My Device, feedback notifications |
-| `HARD`    | Security hardening                 | yes      | RDP off, Restricted Admin, Defender PUA + ASR subset, Exploit Protection     |
+| `HARD`    | Security hardening                 | yes      | RDP off, Restricted Admin, Defender PUA + ASR subset, Exploit Protection, batch file locking |
 | `DEBLOAT` | Remove bundled apps (destructive)  | **no**   | Widgets / WebExperience, Phone Link / YourPhone / CrossDevice                |
 | `AUDIT`   | Read-only state report             | yes      | OS build, SKU, AI component snapshot, effective telemetry level              |
 
@@ -75,6 +75,20 @@ the manifest. No changes.
 reinstalled by `Revert.ps1`. Opt in only if you're comfortable with that.
 
 ---
+
+## What's new in v2.7
+
+- **Baseline bumped to KB5089549** (May 12 2026 Patch Tuesday, builds
+  26100.8457 / 26200.8457). This is the mandatory security update that
+  rolls up KB5083631's preview features into GA.
+- **`RemoveMicrosoftCopilotApp`** (1 new AI policy). Official Microsoft
+  GP/CSP that uninstalls the Copilot app binary from the device if it
+  hasn't been launched in 28 days. Stronger than `TurnOffWindowsCopilot`
+  which only hides the UI. Works on 25H2 Pro/Enterprise/Education.
+- **`LockBatchFilesWhenInUse`** (1 new HARD policy). Enables batch file
+  secure mode: the command processor locks `.bat`/`.cmd` files during
+  execution, preventing runtime tampering or command-substitution
+  attacks. No reboot required.
 
 ## What's new in v2.6
 
