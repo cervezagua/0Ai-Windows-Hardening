@@ -43,11 +43,31 @@
     },
 
     # ---- [A1a] Remove Copilot app (25H2+, Pro/Enterprise/Education) ----
+    # Official policy scope is User Configuration (HKCU). The HKLM twin is
+    # kept as a best-effort mirror for machine-wide coverage. Also blocks
+    # the dockable Copilot sidebar rolling out since May 2026.
     @{
-        Id          = 'AI.WindowsCopilot.RemoveMicrosoftCopilotApp'
+        Id          = 'AI.WindowsCopilot.RemoveMicrosoftCopilotApp.HKCU'
         Category    = 'AI'
         Group       = 'reg-safe'
-        Description = 'Remove Microsoft Copilot app (uninstalls binary if unused 28 days)'
+        Description = 'Remove Microsoft Copilot app (HKCU, documented scope; uninstalls if unused 28 days)'
+        MinBuild    = 26200
+        Kind        = 'Registry'
+        Hive        = 'HKCU'
+        Key         = 'Software\Policies\Microsoft\Windows\WindowsAI'
+        Value       = 'RemoveMicrosoftCopilotApp'
+        Type        = 'DWord'
+        Data        = 1
+        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-windowsai'
+        Confidence  = 'Documented'
+        Reversible  = $true
+        Destructive = $false
+    },
+    @{
+        Id          = 'AI.WindowsCopilot.RemoveMicrosoftCopilotApp.HKLM'
+        Category    = 'AI'
+        Group       = 'reg-safe'
+        Description = 'Remove Microsoft Copilot app (HKLM mirror, best-effort; official scope is HKCU)'
         MinBuild    = 26200
         Kind        = 'Registry'
         Hive        = 'HKLM'
@@ -56,7 +76,7 @@
         Type        = 'DWord'
         Data        = 1
         DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-windowsai'
-        Confidence  = 'Documented'
+        Confidence  = 'BestEffort'
         Reversible  = $true
         Destructive = $false
     },
