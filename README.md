@@ -1,12 +1,13 @@
 # 0AI - Windows Hardening Kit
 
 ### Windows 11 Privacy, AI Disablement & Security Hardening
-**Version:** `v2.7`
+**Version:** `v2.8`
 
-**Supported baselines:** Windows 11 24H2 (OS Build **26100.8457+**) and 25H2
-(OS Build **26200.8457+**), through the **May 2026 Patch Tuesday KB5089549**.
-Earlier builds still work but the 25H2-specific switches (e.g. File Explorer
-AI Actions, IsoEnvBroker, RemoveMicrosoftCopilotApp) are no-ops.
+**Supported baselines:** Windows 11 24H2 (OS Build **26100.8737+**) and 25H2
+(OS Build **26200.8737+**), through the **June 2026 Patch Tuesday KB5094126**
+and the **June 23 preview KB5095093**. Earlier builds still work but the
+25H2-specific switches (e.g. File Explorer AI Actions, IsoEnvBroker,
+RemoveMicrosoftCopilotApp) are no-ops.
 
 > **v2.2 users**: the legacy `.bat` scripts are preserved under `legacy/` and
 > still work. v2.3 is a PowerShell-first rewrite with the same effective
@@ -75,6 +76,27 @@ the manifest. No changes.
 reinstalled by `Revert.ps1`. Opt in only if you're comfortable with that.
 
 ---
+
+## What's new in v2.8
+
+- **Baseline bumped to June 2026** — KB5094126 (June 9 Patch Tuesday)
+  and KB5095093 (June 23 preview), builds 26100.8737 / 26200.8737.
+- **`RemoveMicrosoftCopilotApp` scope fix**. v2.7 wrote this policy to
+  HKLM only, but Microsoft defined it as a **User Configuration** policy
+  that reads from `HKCU\Software\Policies\Microsoft\Windows\WindowsAI` —
+  so it likely never took effect. v2.8 adds the documented HKCU entry
+  and keeps the HKLM twin as a best-effort mirror. This policy also
+  blocks the **dockable Copilot sidebar** Microsoft started rolling out
+  in late May 2026 (the sidebar ships inside the Copilot app; removing
+  the app removes the sidebar).
+- **Reviewed, no action needed**: KB5095093's NPU standby profile lets
+  AI tasks (Studio Effects, Live Captions, on-device Copilot) keep
+  running during Modern Standby. Microsoft ships **no dedicated policy**
+  to disable NPU-standby processing; the kit's existing
+  `systemAIModels=Deny` + Copilot disables are the effective mitigation.
+  Similarly, `AgentConnectorMinimumPolicy` (agent connectors CSP) still
+  has no documented allowed values, so it stays out of the manifest —
+  the kit only ships registry values Microsoft actually documents.
 
 ## What's new in v2.7
 
