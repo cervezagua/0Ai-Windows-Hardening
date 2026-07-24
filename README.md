@@ -1,13 +1,12 @@
 # 0AI - Windows Hardening Kit
 
 ### Windows 11 Privacy, AI Disablement & Security Hardening
-**Version:** `v2.8`
+**Version:** `v2.9`
 
-**Supported baselines:** Windows 11 24H2 (OS Build **26100.8737+**) and 25H2
-(OS Build **26200.8737+**), through the **June 2026 Patch Tuesday KB5094126**
-and the **June 23 preview KB5095093**. Earlier builds still work but the
-25H2-specific switches (e.g. File Explorer AI Actions, IsoEnvBroker,
-RemoveMicrosoftCopilotApp) are no-ops.
+**Supported baselines:** Windows 11 24H2 (OS Build **26100.8875+**) and 25H2
+(OS Build **26200.8875+**), through the **July 2026 Patch Tuesday KB5101650**.
+Earlier builds still work but the 25H2-specific switches (e.g. File Explorer
+AI Actions, IsoEnvBroker, RemoveMicrosoftCopilotApp) are no-ops.
 
 > **v2.2 users**: the legacy `.bat` scripts are preserved under `legacy/` and
 > still work. v2.3 is a PowerShell-first rewrite with the same effective
@@ -76,6 +75,25 @@ the manifest. No changes.
 reinstalled by `Revert.ps1`. Opt in only if you're comfortable with that.
 
 ---
+
+## What's new in v2.9
+
+- **Baseline bumped to KB5101650** (July 14 2026 Patch Tuesday, builds
+  26100.8875 / 26200.8875) — Microsoft's largest security release to
+  date (570 CVEs fixed).
+- **Block the "Ask Copilot" File Explorer shell extension** (2 new AI
+  policies). KB5101650 surfaced "Ask Copilot" as a File Explorer Home
+  **hover action**; the same Copilot packaged-COM handler also owns the
+  right-click "Ask Copilot" verb. The kit now adds the extension's
+  CLSID `{CB3B0003-8088-4EDE-8769-8B354AB2FF8C}` to the Shell Extensions
+  **Blocked** list (HKLM + HKCU), removing the entry without uninstalling
+  Copilot. Community-identified CLSID (confirmed across multiple
+  independent sources), fully reversible.
+- **Reviewed, no action needed**: KB5101650's other changes (Point-in-Time
+  Restore, Bluetooth/AirPods fixes, faster File Explorer, Secure Boot
+  cert rollout) are not AI/privacy surfaces. The File Explorer Home hover
+  action is Copilot-app driven, so `RemoveMicrosoftCopilotApp` (v2.8) plus
+  this CLSID block cover it.
 
 ## What's new in v2.8
 

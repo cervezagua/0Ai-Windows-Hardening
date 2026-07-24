@@ -1,5 +1,5 @@
 #
-# 0AI v2.8 - Snapshot-AIShellVerbs.ps1
+# 0AI v2.9 - Snapshot-AIShellVerbs.ps1
 #
 # Read-only diagnostic. Enumerates the shell verbs and COM registrations
 # that Microsoft uses to expose the "AI actions" submenu when you
@@ -131,6 +131,8 @@ $checks = @(
     @{ Hive='HKLM'; Key='SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\systemAIModels'; Value='Value' }
     @{ Hive='HKCU'; Key='Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\systemAIModels'; Value='Value' }
     @{ Hive='HKLM'; Key='SYSTEM\CurrentControlSet\Services\IsoEnvBroker'; Value='Enabled' }
+    @{ Hive='HKLM'; Key='SOFTWARE\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked'; Value='{CB3B0003-8088-4EDE-8769-8B354AB2FF8C}' }
+    @{ Hive='HKCU'; Key='Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked'; Value='{CB3B0003-8088-4EDE-8769-8B354AB2FF8C}' }
 )
 foreach ($c in $checks) {
     $full = ($c.Hive + ':\' + $c.Key)
