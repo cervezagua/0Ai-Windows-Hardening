@@ -1,5 +1,5 @@
 #
-# 0AI v2.9.4 - Apply.ps1
+# 0AI v2.9.5 - Apply.ps1
 #
 # Entry point for applying privacy / AI-disablement / hardening policies.
 #
