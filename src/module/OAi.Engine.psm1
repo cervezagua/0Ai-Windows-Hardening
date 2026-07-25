@@ -44,6 +44,50 @@ function _Resolve-Hive {
     }
 }
 
+function _Describe-RegistryAccess {
+    # Best-effort explanation of WHY a registry write was denied. Read-only,
+    # never throws - it only ever decorates a warning message.
+    #
+    # Identities are resolved to well-known SIDs rather than compared by name:
+    # "BUILTIN\Administrators" is localized on non-English Windows (German
+    # "Administratoren", Turkish "Yoneticiler", ...), so a name match would
+    # silently fail on exactly the machines this kit already had locale bugs on.
+    param($Policy)
+    try {
+        $path = Join-Path (_Resolve-Hive $Policy.Hive) $Policy.Key
+        if (-not (Test-Path $path)) { return 'key does not exist' }
+
+        $acl    = Get-Acl -Path $path -ErrorAction Stop
+        $denies = New-Object System.Collections.Generic.List[string]
+        $adminCanWrite = $false
+
+        foreach ($ace in $acl.Access) {
+            $sid = $null
+            try {
+                $sid = $ace.IdentityReference.Translate(
+                    [System.Security.Principal.SecurityIdentifier]).Value
+            } catch { }
+            $isPrivileged = ($sid -eq 'S-1-5-32-544' -or $sid -eq 'S-1-5-18')  # Administrators, SYSTEM
+            $rights = [string]$ace.RegistryRights
+
+            if ($ace.AccessControlType -eq 'Deny') {
+                [void]$denies.Add([string]$ace.IdentityReference)
+            } elseif ($isPrivileged -and $rights -match 'FullControl|SetValue|WriteKey') {
+                $adminCanWrite = $true
+            }
+        }
+
+        $parts = @('owner=' + $acl.Owner)
+        if ($denies.Count -gt 0) {
+            $parts += ('explicit DENY for ' + (($denies | Select-Object -Unique) -join ', '))
+        }
+        if (-not $adminCanWrite) { $parts += 'Administrators have no write right' }
+        return ($parts -join '; ')
+    } catch {
+        return ('ACL unreadable: ' + $_.Exception.Message)
+    }
+}
+
 function _Sanitize-Filename {
     param([string]$Text)
     if (-not $Text) { return '_' }
@@ -304,7 +348,17 @@ function Invoke-PolicyAction {
                   ($_.Exception -is [System.Security.SecurityException]) -or
                   ($em -match '(?i)unauthorized|access is not allowed|access is denied')
         if ($denied) {
-            $wm = 'access denied (AV tamper-protection or protected key) - not applied: ' + $em
+            $wm = 'access denied - not applied: ' + $em
+            # For registry writes, say WHY rather than leaving the user to
+            # guess. An explicit DENY ace or a non-Administrators owner means
+            # something locked the key (some debloat tools do this deliberately
+            # so Windows cannot revert their changes); the kit reports it and
+            # stops there. It will not seize ownership to force the write -
+            # that is a defense-evasion technique, and re-adopting it would
+            # undo the AV work done in v2.9.1 and v2.9.4.
+            if ($Policy.Kind -eq 'Registry') {
+                $wm += ' | key ACL: ' + (_Describe-RegistryAccess -Policy $Policy)
+            }
             return (_New-Result -Id $Policy.Id -Status 'warn' -DurationMs $sw.ElapsedMilliseconds -Message $wm -BackupFile $backupFile)
         }
         return (_New-Result -Id $Policy.Id -Status 'error' -DurationMs $sw.ElapsedMilliseconds -Message $em -BackupFile $backupFile)

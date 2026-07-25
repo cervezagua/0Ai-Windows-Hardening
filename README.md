@@ -1,7 +1,7 @@
 # 0AI - Windows Hardening Kit
 
 ### Windows 11 Privacy, AI Disablement & Security Hardening
-**Version:** `v2.9.4`
+**Version:** `v2.9.5`
 
 **Supported baselines:** Windows 11 24H2 (OS Build **26100.8894+**) and 25H2
 (OS Build **26200.8894+**), through the **July 18 2026 out-of-band KB5121767**
@@ -80,6 +80,33 @@ the manifest. No changes.
 reinstalled by `Revert.ps1`. Opt in only if you're comfortable with that.
 
 ---
+
+## What's new in v2.9.5
+
+**Confirmed: v2.9.4 fixed the antivirus problem.** A follow-up run on the
+same machine completed with Bitdefender fully enabled and no block, no
+detection and no deleted backup. Removing the `.reg` export was the fix.
+
+That left one honest failure behind. `DEBLOAT.Dsh.AllowNewsAndInterests`
+still reports `[WARN] ... unauthorized operation` **with antivirus out of
+the picture**, so it is a real permission denial on
+`HKLM\SOFTWARE\Policies\Microsoft\Dsh` — not AV, and not the value-type
+mismatch that v2.9.2 added a retry for.
+
+- **Access-denied warnings now explain themselves.** For registry policies
+  the message gains a `| key ACL: ...` suffix reporting the key's **owner**,
+  any explicit **DENY** entries, and whether Administrators actually hold a
+  write right. That turns "unauthorized operation" into something you can
+  act on. Identities are matched by **well-known SID** (`S-1-5-32-544`,
+  `S-1-5-18`) rather than by name, because `BUILTIN\Administrators` is
+  localized on non-English Windows — the same class of bug fixed in v2.9.3.
+- **The kit still will not seize ownership of a locked key.** Taking
+  ownership to force a policy write is a defense-evasion technique; adopting
+  it would undo the antivirus work of v2.9.1 and v2.9.4. The kit reports the
+  situation and leaves the decision to you — see *Locked registry keys*.
+- `AllowNewsAndInterests` is **kept**: despite the Windows 10-era name, it
+  is still the documented policy value that governs the Widgets feed on
+  Windows 11, so it is not obsolete on 25H2.
 
 ## What's new in v2.9.4
 
@@ -432,6 +459,44 @@ If a scanner reports a *specific detection name* (e.g. `Gen:Variant...`,
 worth reporting as an issue — a named signature hit may indicate something
 we should look at, whereas a generic behavioural block is inherent to what
 the tool does.
+
+---
+
+## Locked registry keys
+
+If a policy reports:
+
+```
+[WARN] ... access denied - not applied: Attempted to perform an unauthorized
+       operation. | key ACL: owner=...; explicit DENY for ...
+```
+
+…then the key is **locked**, and the kit stops there by design.
+
+This happens even when you are running elevated, because registry
+permissions are set **per key**. Common causes:
+
+- Another debloat/privacy tool wrote the setting and then applied a `Deny`
+  ACE so Windows could not undo it. (This is a popular trick, and it also
+  blocks *every* later tool — including this one.)
+- The key is owned by `TrustedInstaller` or `SYSTEM` and Administrators were
+  never granted write access.
+- Endpoint security software is guarding the key.
+
+**The kit deliberately does not take ownership or rewrite ACLs to force the
+write.** Seizing ownership of a protected key is a defense-evasion technique
+— it is what the antivirus fixes in v2.9.1 and v2.9.4 were about, and doing
+it here would re-earn the malware classification for a cosmetic win.
+
+If you want the setting applied, inspect it yourself first:
+
+```powershell
+Get-Acl 'HKLM:\SOFTWARE\Policies\Microsoft\Dsh' | Format-List Owner, AccessToString
+```
+
+Then decide consciously whether to grant Administrators write access via
+`regedit` (right-click the key → **Permissions**). A single skipped
+`[WARN]` policy is not a failed run — the other 95 still applied.
 
 ---
 
