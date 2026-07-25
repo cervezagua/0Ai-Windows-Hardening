@@ -1,5 +1,5 @@
 #
-# 0AI v2.9.2 - Snapshot-AIShellVerbs.ps1
+# 0AI v2.9.3 - Snapshot-AIShellVerbs.ps1
 #
 # Read-only diagnostic. Enumerates the shell verbs and COM registrations
 # that Microsoft uses to expose the "AI actions" submenu when you
@@ -17,6 +17,27 @@
 param()
 
 $ErrorActionPreference = 'Continue'
+
+# ---- Culture invariance (must run before any other work) ----
+# PowerShell's -match / -replace / -like fold case using the CURRENT culture.
+# On Turkish and Azeri locales uppercase 'I' (U+0049) folds to dotless 'i'
+# (U+0131), which silently breaks both pattern matching and character ranges:
+# it mangled report filenames ("AUDIT" -> "AUD_T") and made the AI-candidate
+# scanner miss keys literally named "AI". Fixing each call site individually
+# is whack-a-mole, so pin the thread to InvariantCulture instead - every
+# comparison, format and regex in the kit then behaves identically on every
+# Windows display language. DefaultThreadCurrent* covers worker threads (the
+# ThreadJob path on PS7+). Pinning UICulture also makes framework/OS error
+# messages come back in English, so the access-denied detection in
+# OAi.Engine.psm1 works on non-English Windows too.
+try {
+    $script:OAiCulture = [System.Globalization.CultureInfo]::InvariantCulture
+    [System.Globalization.CultureInfo]::DefaultThreadCurrentCulture   = $script:OAiCulture
+    [System.Globalization.CultureInfo]::DefaultThreadCurrentUICulture = $script:OAiCulture
+    [System.Threading.Thread]::CurrentThread.CurrentCulture   = $script:OAiCulture
+    [System.Threading.Thread]::CurrentThread.CurrentUICulture = $script:OAiCulture
+} catch {}
+
 
 function _Print-Header {
     param([string]$Text)
