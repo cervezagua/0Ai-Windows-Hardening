@@ -467,25 +467,18 @@
     # KB5101650 (July 2026) surfaced "Ask Copilot" as a File Explorer Home
     # hover action; the same Copilot shell extension also owns the right-click
     # "Ask Copilot" verb (present since 2025). Block the packaged-COM handler
-    # by CLSID via the Shell Extensions "Blocked" list. Community-identified
-    # CLSID, not a Microsoft-documented policy - kept reversible.
-    @{
-        Id          = 'AI.Explorer.BlockAskCopilotShellExt.HKLM'
-        Category    = 'AI'
-        Group       = 'reg-safe'
-        Description = 'Block "Ask Copilot" File Explorer shell extension by CLSID (HKLM)'
-        MinBuild    = 0
-        Kind        = 'Registry'
-        Hive        = 'HKLM'
-        Key         = 'SOFTWARE\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked'
-        Value       = '{CB3B0003-8088-4EDE-8769-8B354AB2FF8C}'
-        Type        = 'String'
-        Data        = 'Ask Copilot'
-        DocUrl      = 'https://learn.microsoft.com/windows/win32/shell/reg-shell-exts'
-        Confidence  = 'Community'
-        Reversible  = $true
-        Destructive = $false
-    },
+    # by CLSID via the per-user Shell Extensions "Blocked" list.
+    #
+    # HKCU ONLY (by design). v2.9 also shipped an HKLM twin, but writing a
+    # CLSID into the *machine-wide* HKLM\...\Shell Extensions\Blocked list is
+    # a recognized defense-evasion technique (MITRE T1112 - disabling shell /
+    # security extensions). Bitdefender's tamper / registry-guard module
+    # intercepts it: the HKLM write was denied ("unauthorized operation") and
+    # the whole apply run was flagged as malware. The per-user HKCU write is
+    # not guarded that way and succeeds. It also matches the kit's threat
+    # model (no aggressive / undocumented machine-wide techniques). Copilot's
+    # removal at the source is handled by RemoveMicrosoftCopilotApp (documented).
+    # Community-identified CLSID, reversible.
     @{
         Id          = 'AI.Explorer.BlockAskCopilotShellExt.HKCU'
         Category    = 'AI'
