@@ -1,12 +1,17 @@
 # 0AI - Windows Hardening Kit
 
 ### Windows 11 Privacy, AI Disablement & Security Hardening
-**Version:** `v2.9.2`
+**Version:** `v2.9.3`
 
-**Supported baselines:** Windows 11 24H2 (OS Build **26100.8875+**) and 25H2
-(OS Build **26200.8875+**), through the **July 2026 Patch Tuesday KB5101650**.
-Earlier builds still work but the 25H2-specific switches (e.g. File Explorer
-AI Actions, IsoEnvBroker, RemoveMicrosoftCopilotApp) are no-ops.
+**Supported baselines:** Windows 11 24H2 (OS Build **26100.8894+**) and 25H2
+(OS Build **26200.8894+**), through the **July 18 2026 out-of-band KB5121767**
+(which builds on the July Patch Tuesday KB5101650). Earlier builds still work
+but the 25H2-specific switches (e.g. File Explorer AI Actions, IsoEnvBroker,
+RemoveMicrosoftCopilotApp) are no-ops.
+
+**Runs correctly on every Windows display language.** All string matching is
+pinned to the invariant culture — see *Localization* below for why that
+matters.
 
 > **v2.2 users**: the legacy `.bat` scripts are preserved under `legacy/` and
 > still work. v2.3 is a PowerShell-first rewrite with the same effective
@@ -75,6 +80,31 @@ the manifest. No changes.
 reinstalled by `Revert.ps1`. Opt in only if you're comfortable with that.
 
 ---
+
+## What's new in v2.9.3
+
+- **Universal locale fix.** v2.9.2 patched the two *known* Turkish-locale
+  failures individually. That was whack-a-mole: the same trap exists at
+  every `-match` / `-replace` / `-like` in the codebase (Appx name matching
+  in `Verify.ps1` and `OAi.Engine.psm1`, the `-like` filters in
+  `audit.psd1`), and at every one added in future. All four entry points now
+  pin the thread to **`InvariantCulture`** before doing any work, so string
+  handling is identical on every Windows display language. See
+  *Localization*. The targeted `-creplace` / `CultureInvariant` fixes from
+  v2.9.2 are kept as defence in depth for anyone importing the modules
+  directly.
+- **Baseline bumped to KB5121767** (July 18 2026 out-of-band, builds
+  26100.8894 / 26200.8894). Out-of-band fix for an Intel Innovation Platform
+  Framework driver issue; it also unblocks Dell devices that were held back
+  from KB5101650. **No new AI or privacy surfaces**, so no new policies.
+- **Antivirus behaviour documented honestly.** New *Antivirus false
+  positives* section explains why behaviour-based AV flags this kit (unsigned
+  script + Defender changes + service disabling + bulk policy writes is
+  indistinguishable from system-tampering malware to a heuristic), what was
+  already removed in v2.9.1 to reduce it, and how to add a Bitdefender
+  exclusion that covers **Advanced Threat Defense** and not just the
+  on-access scanner. The kit will not add evasion techniques to dodge
+  detection.
 
 ## What's new in v2.9.2 (hotfix)
 
@@ -307,6 +337,71 @@ The launchers invoke PowerShell with `-ExecutionPolicy Bypass` — the same
 posture as v2.2. The scripts are not code-signed. If your environment
 requires signed scripts, import the modules directly from an elevated
 prompt or sign them yourself.
+
+---
+
+## Antivirus false positives
+
+**Third-party AV will likely flag this kit. That is expected, and it is not
+a bug we can fully engineer away.** Behaviour-based engines (Bitdefender
+Advanced Threat Defense, Norton SONAR, etc.) score an *unsigned PowerShell
+script launched with `-ExecutionPolicy Bypass`* that also:
+
+- changes Microsoft Defender settings (`Set-MpPreference`, ASR rules),
+- stops and disables services (DiagTrack, WerSvc, TermService),
+- bulk-writes `HKLM\SOFTWARE\Policies\...` keys, and
+- removes Appx packages,
+
+…and that combination is a near-perfect match for the behavioural signature
+of real system-tampering malware. The irony is that most of what the kit
+does *strengthens* Defender — the heuristic cannot tell the difference
+between "hardens the machine" and "tampers with security settings".
+
+**What we have already done about it:** v2.9.1 removed the one genuinely
+malware-shaped technique in the kit — a machine-wide write into
+`HKLM\...\Shell Extensions\Blocked` (MITRE **T1112**, disabling shell /
+security extensions). Everything remaining targets documented Microsoft
+policy keys. The kit will not adopt evasion techniques to dodge AV
+detection; that would be exactly the wrong trade for a security tool.
+
+**What to do:** if you trust the source, add a folder exclusion for the kit
+before running it.
+
+- *Bitdefender*: **Protection → Antivirus → Settings → Manage exceptions →
+  Add an exception** → the kit's folder, and tick **Advanced Threat
+  Defense** as well as On-Access scanning. An Antivirus-only exclusion is
+  not enough — the behavioural module is usually what fires.
+- Re-enable protection afterwards. Do not leave AV disabled.
+
+If a scanner reports a *specific detection name* (e.g. `Gen:Variant...`,
+`Heur.BZC...`, `ATD:...`) rather than a generic behaviour block, that is
+worth reporting as an issue — a named signature hit may indicate something
+we should look at, whereas a generic behavioural block is inherent to what
+the tool does.
+
+---
+
+## Localization
+
+The kit pins its thread to **`InvariantCulture`** at every entry point
+(`Apply.ps1`, `Revert.ps1`, `Verify.ps1`, `Snapshot-AIShellVerbs.ps1`).
+
+This is not cosmetic. PowerShell's `-match`, `-replace` and `-like` are
+case-insensitive **and fold case using the current culture**. On Turkish and
+Azeri locales, uppercase `I` (U+0049) folds to dotless `ı` (U+0131) — which
+is outside the `a-z` range. Real consequences observed on a Turkish machine
+before v2.9.3:
+
+- report filenames were corrupted (`AUDIT.AI...` → `AUD_T.A_...`), because
+  the "invalid filename character" class `[^A-Za-z0-9._-]` matched every `I`;
+- the AI-candidate scanner in `Snapshot-AIShellVerbs.ps1` failed to match a
+  registry key literally named **`AI`** — the exact thing it looks for.
+
+Pinning the culture fixes every present *and future* call site at once,
+rather than patching them one at a time. Pinning `CurrentUICulture` as well
+means framework and OS error messages come back in English, so the
+access-denied detection in `OAi.Engine.psm1` also works on non-English
+Windows installs.
 
 ---
 
