@@ -32,6 +32,10 @@ if (-not (Test-IsAdmin)) {
 
 $thisDir     = Split-Path -Parent $PSCommandPath
 $moduleDir   = Join-Path $thisDir 'module'
+
+# Version module first: the log header and restore-point name below call
+# Get-OAiVersion, so it must be loaded before any other work.
+Import-Module (Join-Path $moduleDir 'OAi.Version.psm1') -Force
 $manifestDir = Join-Path $thisDir 'manifest'
 
 if (-not $BackupRoot) { $BackupRoot = Join-Path $env:USERPROFILE '0AI_Backups' }
@@ -56,7 +60,7 @@ Write-Host ('[+] Using backup folder: {0}' -f $BackupDir)
 $runJson = Join-Path $BackupDir 'run.json'
 $logFile = Join-Path $BackupDir 'revert.log'
 
-'[+] 0AI v2.3 Revert starting' | Out-File -Encoding UTF8 -FilePath $logFile -Append
+('[+] 0AI {0} Revert starting' -f (Get-OAiVersion)) | Out-File -Encoding UTF8 -FilePath $logFile -Append
 ('[+] BackupDir: ' + $BackupDir) | Out-File -Encoding UTF8 -FilePath $logFile -Append
 
 if (-not (Test-Path $runJson)) {
@@ -108,7 +112,7 @@ foreach ($mf in $manifestFiles) {
 }
 
 try {
-    Checkpoint-Computer -Description '0AI_Revert_v2_3' -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop | Out-Null
+    Checkpoint-Computer -Description ('0AI_Revert_' + (Get-OAiVersion)) -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop | Out-Null
     '[+] Restore point (pre-revert) created.' | Out-File -Encoding UTF8 -FilePath $logFile -Append
 } catch {
     ('[!] Restore point unavailable: ' + $_.Exception.Message) | Out-File -Encoding UTF8 -FilePath $logFile -Append

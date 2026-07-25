@@ -1,5 +1,5 @@
 #
-# 0AI v2.9.1 - Apply.ps1
+# 0AI v2.9.2 - Apply.ps1
 #
 # Entry point for applying privacy / AI-disablement / hardening policies.
 #
@@ -42,6 +42,10 @@ $thisDir    = Split-Path -Parent $PSCommandPath
 $moduleDir  = Join-Path $thisDir 'module'
 $manifestDir = Join-Path $thisDir 'manifest'
 
+# Version module first: the log header and restore-point name below call
+# Get-OAiVersion, so it must be loaded before any other work.
+Import-Module (Join-Path $moduleDir 'OAi.Version.psm1') -Force
+
 if (-not $BackupRoot) {
     $BackupRoot = Join-Path $env:USERPROFILE '0AI_Backups'
 }
@@ -55,7 +59,7 @@ $LogFile   = Join-Path $BackupDir 'apply.log'
 $RunJson   = Join-Path $BackupDir 'run.json'
 $VerifyTxt = Join-Path $BackupDir 'verification.txt'
 
-'[+] 0AI v2.3 Apply starting'                         | Out-File -Encoding UTF8 -FilePath $LogFile -Append
+('[+] 0AI {0} Apply starting' -f (Get-OAiVersion))    | Out-File -Encoding UTF8 -FilePath $LogFile -Append
 ('[+] BackupDir: ' + $BackupDir)                      | Out-File -Encoding UTF8 -FilePath $LogFile -Append
 ('[+] Categories: ' + ($Categories -join ','))        | Out-File -Encoding UTF8 -FilePath $LogFile -Append
 ('[+] PS version: ' + $PSVersionTable.PSVersion)      | Out-File -Encoding UTF8 -FilePath $LogFile -Append
@@ -64,7 +68,7 @@ Write-Host ('[+] Backup dir: {0}' -f $BackupDir)
 
 # ---- Restore point (best-effort) ----
 try {
-    Checkpoint-Computer -Description '0AI_Pre_v2_3' -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop | Out-Null
+    Checkpoint-Computer -Description ('0AI_Pre_' + (Get-OAiVersion)) -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop | Out-Null
     '[+] Restore point created.' | Out-File -Encoding UTF8 -FilePath $LogFile -Append
 } catch {
     ('[!] Restore point unavailable: ' + $_.Exception.Message) | Out-File -Encoding UTF8 -FilePath $LogFile -Append
@@ -184,7 +188,7 @@ try {
 
 # ---- Write verification.txt ----
 try {
-    '=== 0AI v2.3 verification ===' | Out-File -Encoding UTF8 -FilePath $VerifyTxt
+    ('=== 0AI {0} verification ===' -f (Get-OAiVersion)) | Out-File -Encoding UTF8 -FilePath $VerifyTxt
     ('Timestamp : {0}' -f (Get-Date))          | Out-File -Encoding UTF8 -FilePath $VerifyTxt -Append
     ('BackupDir : {0}' -f $BackupDir)          | Out-File -Encoding UTF8 -FilePath $VerifyTxt -Append
     ('Categories: {0}' -f ($Categories -join ',')) | Out-File -Encoding UTF8 -FilePath $VerifyTxt -Append

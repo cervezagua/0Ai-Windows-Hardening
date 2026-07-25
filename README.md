@@ -1,7 +1,7 @@
 # 0AI - Windows Hardening Kit
 
 ### Windows 11 Privacy, AI Disablement & Security Hardening
-**Version:** `v2.9.1`
+**Version:** `v2.9.2`
 
 **Supported baselines:** Windows 11 24H2 (OS Build **26100.8875+**) and 25H2
 (OS Build **26200.8875+**), through the **July 2026 Patch Tuesday KB5101650**.
@@ -75,6 +75,38 @@ the manifest. No changes.
 reinstalled by `Revert.ps1`. Opt in only if you're comfortable with that.
 
 ---
+
+## What's new in v2.9.2 (hotfix)
+
+Found by reading a real apply log from a Turkish-locale machine.
+
+- **Report filenames were mangled on Turkish/Azeri locales.**
+  `AUDIT.AI.ComponentSnapshot` was written out as
+  `report_AUD_T.A_.ComponentSnapshot.json` — every capital **I** became `_`.
+  Cause: PowerShell's `-replace` is case-**insensitive** and folds case using
+  the *current culture*. Under Turkish rules `I` (U+0049) folds to dotless
+  `ı` (U+0131), which falls outside the `a-z` range, so the "invalid
+  character" class `[^A-Za-z0-9._-]` matched every `I`. Fixed by using the
+  case-**sensitive** `-creplace`, which does no case folding at all.
+- **The same bug class silently weakened the diagnostic.**
+  `Snapshot-AIShellVerbs.ps1` flagged AI candidates with `-match '(?i)ai|…'`;
+  on a Turkish locale that fails to match a key literally named **AI** — the
+  exact thing it exists to find. All its matches now go through a
+  `CultureInvariant` helper so results are identical on every locale.
+- **Seven scary `WARNING:` lines on every run, gone.** `Start-ThreadJob`
+  ships with PowerShell 7+, not stock 5.1, so the sequential path is the
+  *normal* case on Windows 11 — but the runner warned once per exec group.
+  Now it prints a single `[i]` informational line, and the README no longer
+  overpromises parallelism (see v2.3 notes).
+- **Registry writes retry once on a type mismatch.** `-Force` can't always
+  overwrite a value that already exists with a different registry type. The
+  engine now deletes the stale value and retries; if that fails too it
+  rethrows the *original* error, so a genuine ACL / AV-tamper denial is
+  still reported as the `[WARN]` added in v2.9.1.
+- **The tool no longer calls itself v2.3.** Version lived hardcoded in eight
+  places, so logs said `0AI v2.3 Apply starting` while running v2.9.1
+  policies. New `src/module/OAi.Version.psm1` is the single source of truth
+  for every banner, log header and restore-point name.
 
 ## What's new in v2.9.1 (hotfix)
 
@@ -212,7 +244,11 @@ reinstalled by `Revert.ps1`. Opt in only if you're comfortable with that.
 - **Parallel execution** — registry writes and service toggles run in
   parallel with per-group caps (reg-safe=16, sc-safe=8, appx=1, defender=1,
   mitigation=1, report=4). Slow Appx removals in `DEBLOAT` no longer block
-  fast reg writes in `PRIV`/`HARD`.
+  fast reg writes in `PRIV`/`HARD`. **Requires PowerShell 7+** (or the
+  `ThreadJob` module installed on 5.1). Stock Windows 11 ships Windows
+  PowerShell 5.1 *without* `ThreadJob`, so the launchers normally take the
+  **sequential** path and print one `[i]` note saying so — that is the
+  expected case, and a full run still finishes in a few seconds.
 - **Symmetric revert** via `run.json` — every action recorded at apply time
   is reversed through the same dispatcher, not a hand-maintained list.
 - **`-WhatIf` dry-run** prints the plan grouped by Confidence and exits
@@ -286,7 +322,7 @@ prompt or sign them yourself.
 |   |-- Revert.ps1
 |   |-- Verify.ps1
 |   |-- manifest/            data: one .psd1 per category
-|   `-- module/              engine + runner + UI + launcher picker
+|   `-- module/              engine + runner + UI + launcher picker + version
 |-- tests/Manifest.Tests.ps1
 |-- docs/ARCHITECTURE.md
 |-- legacy/                  v2.2 .bat scripts, preserved for reference

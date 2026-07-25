@@ -1,5 +1,5 @@
 #
-# OAi.UI.Launcher.psm1 - v2.9.1 arrow-key picker for 0AI Apply (Design 2)
+# OAi.UI.Launcher.psm1 - v2.9.2 arrow-key picker for 0AI Apply (Design 2)
 #
 # Light-line box + arrow-key + checkbox picker. Shows when the user
 # double-clicks 0AI_Apply.cmd with no arguments.
@@ -20,6 +20,10 @@
 
 # StrictMode disabled for hashtable-heavy manifest handling
 $ErrorActionPreference = 'Stop'
+
+# Version banner text comes from the shared version module (single source
+# of truth). Imported here so this module also works when loaded standalone.
+Import-Module (Join-Path $PSScriptRoot 'OAi.Version.psm1') -Force
 
 $script:INNER_WIDTH = 62
 
@@ -109,7 +113,7 @@ function _Draw-Picker {
 
     Write-Host ''
     Write-Host $top
-    Write-Host (' ' + $vb + (_Pad-Interior '  0AI v2.3  -  Select categories to apply') + $vb)
+    Write-Host (' ' + $vb + (_Pad-Interior ('  0AI {0}  -  Select categories to apply' -f (Get-OAiVersion))) + $vb)
     Write-Host (' ' + $vb + (_Pad-Interior '  Up/Dn move   SPACE toggle   ENTER run   D dry-run   Q quit') + $vb)
     Write-Host $sep
     Write-Host (' ' + $vb + (_Pad-Interior '') + $vb)
