@@ -9,6 +9,10 @@
 # StrictMode disabled for hashtable-heavy manifest handling
 $ErrorActionPreference = 'Stop'
 
+# Version banner text comes from the shared version module (single source
+# of truth). Imported here so this module also works when loaded standalone.
+Import-Module (Join-Path $PSScriptRoot 'OAi.Version.psm1') -Force
+
 # PS 5.1 does not recognize `e as the escape character (added in PS 6). Use the
 # actual char so ANSI sequences render correctly on Windows PowerShell 5.1.
 $script:ESC     = [char]27
@@ -38,7 +42,7 @@ function Start-ConsoleUI {
 
     Write-Host ''
     Write-Host '============================================================'
-    Write-Host ' 0AI v2.3 - applying plan'
+    Write-Host (' 0AI {0} - applying plan' -f (Get-OAiVersion))
     Write-Host '============================================================'
 
     return $script:UIState

@@ -1,5 +1,5 @@
 #
-# 0AI v2.9.1 - Snapshot-AIShellVerbs.ps1
+# 0AI v2.9.2 - Snapshot-AIShellVerbs.ps1
 #
 # Read-only diagnostic. Enumerates the shell verbs and COM registrations
 # that Microsoft uses to expose the "AI actions" submenu when you
@@ -26,6 +26,20 @@ function _Print-Header {
     Write-Host ('=' * 72)
 }
 
+# Culture-proof case-insensitive match. PowerShell's -match folds case using
+# the CURRENT culture: on Turkish / Azeri locales uppercase 'I' folds to
+# dotless 'i' (U+0131), so a pattern like 'ai' silently fails to match a key
+# named "AI" - this diagnostic would miss the very keys it exists to find.
+# CultureInvariant makes the match behave identically on every locale.
+function _IMatch {
+    param([string]$Text, [string]$Pattern)
+    if ($null -eq $Text) { return $false }
+    return [System.Text.RegularExpressions.Regex]::IsMatch(
+        $Text, $Pattern,
+        [System.Text.RegularExpressions.RegexOptions]::IgnoreCase -bor
+        [System.Text.RegularExpressions.RegexOptions]::CultureInvariant)
+}
+
 function _Enum-ShellVerbs {
     param([string]$RootPath)
     if (-not (Test-Path $RootPath)) {
@@ -49,7 +63,7 @@ function _Enum-ShellVerbs {
             }
         } catch {}
         $tag = ''
-        if ($leaf -match '(?i)ai|erase|background|remove|blur|generat|visual') { $tag = '  <-- AI candidate' }
+        if (_IMatch $leaf 'ai|erase|background|remove|blur|generat|visual') { $tag = '  <-- AI candidate' }
         Write-Host ('  [{0}]{1}' -f $leaf, $tag)
         foreach ($v in $vals) { Write-Host ('    ' + $v) }
     }
@@ -94,7 +108,7 @@ _Print-Header 'HKCU AppX packages that own "image" verbs'
 $appxShell = 'HKCU:\Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\SystemAppData'
 if (Test-Path $appxShell) {
     $candidates = Get-ChildItem -Path $appxShell -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -match '(?i)Paint|Photos|Windows\.AI' } |
+        Where-Object { _IMatch $_.Name 'Paint|Photos|Windows\.AI' } |
         Select-Object -ExpandProperty Name
     foreach ($c in $candidates) { Write-Host ('  ' + $c) }
     if (-not $candidates) { Write-Host '  (no Paint/Photos/AI packages registered for this user)' }
@@ -108,7 +122,7 @@ if (Test-Path $se) {
     if ($props) {
         foreach ($name in ($props.PSObject.Properties.Name | Where-Object { $_ -notlike 'PS*' })) {
             $val = $props.$name
-            if ($val -match '(?i)ai|erase|background|blur|visual') {
+            if (_IMatch $val 'ai|erase|background|blur|visual') {
                 Write-Host ('  {0}  = {1}' -f $name, $val)
             }
         }

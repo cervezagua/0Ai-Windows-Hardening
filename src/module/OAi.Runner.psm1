@@ -106,6 +106,15 @@ function Invoke-Plan {
         }
     } catch {}
 
+    # Start-ThreadJob ships with PowerShell 7+; on stock Windows PowerShell 5.1
+    # the ThreadJob module is not installed, so the sequential path is the
+    # NORMAL case on a default Windows 11 box - not an error. Say so once,
+    # quietly, instead of emitting a Write-Warning per exec group (which
+    # produced 7 alarming WARNING lines at the top of every run).
+    if (-not $hasThreadJob) {
+        Write-Host '[i] Running sequentially (Start-ThreadJob unavailable on Windows PowerShell 5.1). This is expected; total runtime is a few seconds.'
+    }
+
     # Launch one "group runner" per exec group. Each group runner processes its
     # own policies up to the group's cap. Groups run concurrently with each
     # other via Start-ThreadJob.
@@ -149,8 +158,7 @@ function Invoke-Plan {
             } -ArgumentList (,$polList.ToArray()), $cap, $BackupDir, (Join-Path $PSScriptRoot 'OAi.Engine.psm1')
             $groupJobs += [pscustomobject]@{ Group = $g; Job = $job }
         } else {
-            # fully sequential fallback
-            Write-Warning "Start-ThreadJob not available; running group '$g' sequentially"
+            # fully sequential fallback (announced once above, not per group)
             foreach ($pol in $polList) {
                 $res = Invoke-PolicyAction -Policy $pol -BackupDir $BackupDir
                 $allResults.Add($res)

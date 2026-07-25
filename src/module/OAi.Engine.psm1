@@ -47,7 +47,13 @@ function _Resolve-Hive {
 function _Sanitize-Filename {
     param([string]$Text)
     if (-not $Text) { return '_' }
-    ($Text -replace '[^A-Za-z0-9._-]', '_')
+    # -creplace (case-SENSITIVE), not -replace. PowerShell's -replace is
+    # case-insensitive and folds case using the current culture. On Turkish /
+    # Azeri locales, uppercase 'I' (U+0049) folds to dotless 'i' (U+0131),
+    # which is outside the a-z range - so [^A-Za-z0-9._-] matched every 'I'
+    # and mangled report names ("AUDIT" -> "AUD_T", "BuildInfo" -> "Build_nfo").
+    # A case-sensitive replace does no case folding, so it is culture-proof.
+    ($Text -creplace '[^A-Za-z0-9._-]', '_')
 }
 
 # ---------------------------------------------------------------------------
@@ -281,7 +287,22 @@ function _Apply-Registry {
     $propType = $Policy.Type
     if ($propType -eq 'REG_DWORD') { $propType = 'DWord' }
     if ($propType -eq 'REG_SZ')    { $propType = 'String' }
-    New-ItemProperty -Path $path -Name $Policy.Value -Value $Policy.Data -PropertyType $propType -Force -ErrorAction Stop | Out-Null
+    try {
+        New-ItemProperty -Path $path -Name $Policy.Value -Value $Policy.Data -PropertyType $propType -Force -ErrorAction Stop | Out-Null
+    } catch {
+        # -Force cannot always overwrite a value that already exists with a
+        # different registry type (e.g. a String where we expect a DWord); the
+        # write surfaces as an access/type failure. Retry once by deleting the
+        # stale value first. If the retry also fails, rethrow the ORIGINAL
+        # error so a genuine ACL / AV-tamper denial is still reported as such.
+        $orig = $_
+        try {
+            Remove-ItemProperty -Path $path -Name $Policy.Value -Force -ErrorAction Stop
+            New-ItemProperty -Path $path -Name $Policy.Value -Value $Policy.Data -PropertyType $propType -Force -ErrorAction Stop | Out-Null
+        } catch {
+            throw $orig
+        }
+    }
     return "set $($Policy.Hive)\$($Policy.Key)!$($Policy.Value) = $($Policy.Data)"
 }
 

@@ -8,6 +8,10 @@
 # StrictMode disabled for hashtable-heavy manifest handling
 $ErrorActionPreference = 'Stop'
 
+# Version banner text comes from the shared version module (single source
+# of truth). Imported here so this module also works when loaded standalone.
+Import-Module (Join-Path $PSScriptRoot 'OAi.Version.psm1') -Force
+
 function Show-Plan {
     [CmdletBinding()]
     param(
@@ -17,7 +21,7 @@ function Show-Plan {
     $groups = $Plan.Policies | Group-Object -Property Confidence | Sort-Object Name
     Write-Host ''
     Write-Host '============================================================'
-    Write-Host (' 0AI v2.3 plan preview ({0} policies)' -f $Plan.Count)
+    Write-Host (' 0AI {0} plan preview ({1} policies)' -f (Get-OAiVersion), $Plan.Count)
     Write-Host '============================================================'
     foreach ($g in $groups) {
         Write-Host ''
