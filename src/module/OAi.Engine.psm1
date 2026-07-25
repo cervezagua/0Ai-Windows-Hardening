@@ -131,10 +131,47 @@ function Backup-PolicyState {
 
         switch ($Policy.Kind) {
             'Registry' {
-                $fname = '{0}.reg' -f (_Sanitize-Filename ("{0}_{1}" -f $Policy.Hive, $Policy.Key))
+                # JSON snapshot of the SINGLE value we are about to change -
+                # deliberately not a .reg export. Two reasons:
+                #
+                # 1. Antivirus. Bitdefender's Antivirus module deleted our
+                #    exported HKLM_SOFTWARE_Policies_Microsoft_Dsh.reg and
+                #    Advanced Threat Defense then "blocked all applications
+                #    involved", which is what made the following write fail
+                #    with "unauthorized operation". A script that spawns
+                #    reg.exe to dump Policies keys into .reg files in a user
+                #    folder looks exactly like malware staging registry
+                #    payloads - and .reg files are themselves executable
+                #    artifacts (double-clicking one merges it).
+                # 2. Correctness. reg export/import round-trips the WHOLE
+                #    key, so a revert could resurrect unrelated values or
+                #    clobber changes made after apply. A per-value snapshot
+                #    reverts exactly what we touched, and can represent
+                #    "this value did not exist before" (revert = delete it),
+                #    which reg import cannot express at all.
+                $fname = 'reg_{0}.json' -f (_Sanitize-Filename ("{0}_{1}_{2}" -f $Policy.Hive, $Policy.Key, $Policy.Value))
                 $outFile = Join-Path $BackupDir $fname
-                $regPath = ('{0}\{1}' -f $Policy.Hive, $Policy.Key)
-                $null = & reg.exe export $regPath $outFile /y 2>&1
+                $path = Join-Path (_Resolve-Hive $Policy.Hive) $Policy.Key
+                $snap = [ordered]@{
+                    Hive    = $Policy.Hive
+                    Key     = $Policy.Key
+                    Value   = $Policy.Value
+                    Existed = $false
+                    Type    = $null
+                    Data    = $null
+                }
+                try {
+                    $item = Get-Item -Path $path -ErrorAction Stop
+                    # GetValueKind throws if the value is absent - that is the
+                    # signal for "did not exist", handled by the catch below.
+                    $kind = $item.GetValueKind($Policy.Value)
+                    $snap.Existed = $true
+                    $snap.Type    = $kind.ToString()
+                    $snap.Data    = $item.GetValue($Policy.Value)
+                } catch {
+                    # key or value absent -> Existed stays $false
+                }
+                ($snap | ConvertTo-Json -Depth 4) | Out-File -Encoding UTF8 -FilePath $outFile
                 return $outFile
             }
             'Service' {
@@ -455,10 +492,35 @@ function Undo-PolicyAction {
     try {
         switch ($Policy.Kind) {
             'Registry' {
-                if ($BackupFile -and (Test-Path $BackupFile)) {
+                $ext = ''
+                if ($BackupFile) { $ext = [System.IO.Path]::GetExtension($BackupFile) }
+
+                if ($BackupFile -and (Test-Path $BackupFile) -and $ext -eq '.json') {
+                    # v2.9.4+ per-value snapshot.
+                    $path = Join-Path (_Resolve-Hive $Policy.Hive) $Policy.Key
+                    $snap = Get-Content -Raw -Path $BackupFile | ConvertFrom-Json
+                    if ($snap.Existed) {
+                        if (-not (Test-Path $path)) {
+                            New-Item -Path $path -Force -ErrorAction Stop | Out-Null
+                        }
+                        $data = $snap.Data
+                        # ConvertFrom-Json gives Binary back as an Object[] of
+                        # numbers; New-ItemProperty needs a real byte[].
+                        if ($snap.Type -eq 'Binary' -and $null -ne $data) { $data = [byte[]]$data }
+                        New-ItemProperty -Path $path -Name $snap.Value -Value $data -PropertyType $snap.Type -Force -ErrorAction Stop | Out-Null
+                        $sw.Stop()
+                        return (_New-Result -Id $Policy.Id -Status 'ok' -DurationMs $sw.ElapsedMilliseconds -Message ("restored {0}!{1} = {2}" -f $snap.Key, $snap.Value, $snap.Data))
+                    } else {
+                        # Value did not exist before we ran - remove it again.
+                        try { Remove-ItemProperty -Path $path -Name $Policy.Value -ErrorAction Stop } catch {}
+                        $sw.Stop()
+                        return (_New-Result -Id $Policy.Id -Status 'ok' -DurationMs $sw.ElapsedMilliseconds -Message ("removed {0}!{1} (did not exist before apply)" -f $Policy.Key, $Policy.Value))
+                    }
+                } elseif ($BackupFile -and (Test-Path $BackupFile)) {
+                    # Legacy .reg backup written by v2.9.3 and earlier.
                     $null = & reg.exe import $BackupFile 2>&1
                     $sw.Stop()
-                    return (_New-Result -Id $Policy.Id -Status 'ok' -DurationMs $sw.ElapsedMilliseconds -Message "reg import $BackupFile")
+                    return (_New-Result -Id $Policy.Id -Status 'ok' -DurationMs $sw.ElapsedMilliseconds -Message "reg import $BackupFile (legacy backup)")
                 } else {
                     # best-effort delete
                     $path = Join-Path (_Resolve-Hive $Policy.Hive) $Policy.Key

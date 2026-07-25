@@ -1,7 +1,7 @@
 # 0AI - Windows Hardening Kit
 
 ### Windows 11 Privacy, AI Disablement & Security Hardening
-**Version:** `v2.9.3`
+**Version:** `v2.9.4`
 
 **Supported baselines:** Windows 11 24H2 (OS Build **26100.8894+**) and 25H2
 (OS Build **26200.8894+**), through the **July 18 2026 out-of-band KB5121767**
@@ -80,6 +80,53 @@ the manifest. No changes.
 reinstalled by `Revert.ps1`. Opt in only if you're comfortable with that.
 
 ---
+
+## What's new in v2.9.4
+
+**Root cause of the Bitdefender block, found and removed.** A user's log
+plus Bitdefender's own report pinned it exactly:
+
+```
+Antivirus            The item ...\0AI_Backups\...\HKLM_SOFTWARE_Policies_Microsoft_Dsh.reg
+                     was deleted at user request.
+Advanced Threat      Bitdefender detected potentially malicious behavior and
+Defense              blocked all applications involved.
+```
+
+The file Bitdefender killed was **our own backup**, not a Windows key. The
+chain was:
+
+1. Policies already applied are **skipped**, and skipped policies are never
+   backed up — so `DEBLOAT.Dsh.AllowNewsAndInterests`, the only registry
+   policy still needing work, was the *only* one to reach the backup step.
+2. Backup ran `reg.exe export` and wrote
+   `HKLM_SOFTWARE_Policies_Microsoft_Dsh.reg`.
+3. Bitdefender deleted that `.reg` file and ATD "blocked all applications
+   involved".
+4. The registry write that followed therefore failed with *"Attempted to
+   perform an unauthorized operation"* — surfacing as the `[WARN]` added in
+   v2.9.1. It was never an ACL problem or a value-type problem.
+
+**Fix: registry backups are now per-value JSON snapshots, not `.reg`
+exports.** No `.reg` files are written and `reg.exe` is no longer spawned.
+This is also strictly more correct:
+
+- `reg export`/`import` round-trips the **whole key**, so a revert could
+  resurrect unrelated values or clobber changes made after apply. A
+  per-value snapshot reverts exactly what the kit touched.
+- It can represent *"this value did not exist before"* (revert = delete it),
+  which `reg import` cannot express at all.
+- It matches the JSON format already used for service, Appx and Defender
+  backups.
+
+Backup folders written by v2.9.3 and earlier still contain `.reg` files;
+`Revert.ps1` detects those and keeps using `reg import` for them, so old
+backups remain restorable.
+
+> This removes the one trigger Bitdefender named a file for. Advanced Threat
+> Defense may still score the process on its other behaviour (changing
+> Defender settings, disabling services, bulk policy writes) — the exclusion
+> guidance under *Antivirus false positives* still applies.
 
 ## What's new in v2.9.3
 
@@ -357,12 +404,19 @@ of real system-tampering malware. The irony is that most of what the kit
 does *strengthens* Defender — the heuristic cannot tell the difference
 between "hardens the machine" and "tampers with security settings".
 
-**What we have already done about it:** v2.9.1 removed the one genuinely
-malware-shaped technique in the kit — a machine-wide write into
-`HKLM\...\Shell Extensions\Blocked` (MITRE **T1112**, disabling shell /
-security extensions). Everything remaining targets documented Microsoft
-policy keys. The kit will not adopt evasion techniques to dodge AV
-detection; that would be exactly the wrong trade for a security tool.
+**What we have already done about it:**
+
+- **v2.9.1** removed the one genuinely malware-shaped *technique* in the kit
+  — a machine-wide write into `HKLM\...\Shell Extensions\Blocked` (MITRE
+  **T1112**, disabling shell / security extensions).
+- **v2.9.4** removed the one malware-shaped *artifact*: the kit no longer
+  spawns `reg.exe` or writes `.reg` files. Bitdefender was deleting our own
+  exported `.reg` backup and blocking the process as a result (see the
+  v2.9.4 notes). Registry backups are per-value JSON snapshots now.
+
+Everything remaining targets documented Microsoft policy keys. The kit will
+not adopt evasion techniques to dodge AV detection; that would be exactly
+the wrong trade for a security tool.
 
 **What to do:** if you trust the source, add a folder exclusion for the kit
 before running it.
@@ -450,7 +504,8 @@ Before making changes, Apply:
 
 Revert:
 - Reads the newest `run.json`
-- Restores registry snapshots with `reg import`
+- Restores registry values from per-value JSON snapshots (legacy `.reg`
+  backups from v2.9.3 and earlier are still imported)
 - Restores Defender preferences from the pre-run snapshot
 - Removes the ASR rules it added
 - Disables the process mitigations it enabled
