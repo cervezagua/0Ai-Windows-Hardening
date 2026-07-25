@@ -1,7 +1,7 @@
 # 0AI - Windows Hardening Kit
 
 ### Windows 11 Privacy, AI Disablement & Security Hardening
-**Version:** `v2.9`
+**Version:** `v2.9.1`
 
 **Supported baselines:** Windows 11 24H2 (OS Build **26100.8875+**) and 25H2
 (OS Build **26200.8875+**), through the **July 2026 Patch Tuesday KB5101650**.
@@ -75,6 +75,28 @@ the manifest. No changes.
 reinstalled by `Revert.ps1`. Opt in only if you're comfortable with that.
 
 ---
+
+## What's new in v2.9.1 (hotfix)
+
+- **Backed out the machine-wide "Ask Copilot" block that tripped
+  antivirus.** v2.9 wrote the Copilot shell-extension CLSID into
+  `HKLM\...\Shell Extensions\Blocked`. Writing a CLSID into the
+  *machine-wide* Blocked list is a recognized defense-evasion technique
+  (MITRE T1112 — disabling shell/security extensions), so Bitdefender's
+  tamper/registry-guard module intercepted it: the HKLM write was denied
+  ("unauthorized operation") **and the whole apply run was flagged as
+  malware**. The kit now keeps **only the per-user HKCU block**, which is
+  not guarded that way, still hides "Ask Copilot" for the signed-in user,
+  and matches the kit's threat model (no aggressive/undocumented
+  machine-wide techniques). `RemoveMicrosoftCopilotApp` (v2.8) remains the
+  documented path that removes Copilot at its source.
+- **Access-denied writes now report as `[WARN]`, not `[ERROR]`.** When a
+  third-party AV tamper-guard or a TrustedInstaller-protected key denies
+  an otherwise-valid elevated write (e.g. the `DEBLOAT.Dsh.*` Widgets/News
+  policies under some Bitdefender configs), the engine now classifies it
+  as a warning with a clear cause — *"access denied (AV tamper-protection
+  or protected key)"* — instead of a hard error that looks like a kit bug.
+  Genuine failures still surface as errors.
 
 ## What's new in v2.9
 

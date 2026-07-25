@@ -251,6 +251,19 @@ function Invoke-PolicyAction {
     } catch {
         $sw.Stop()
         $em = $_.Exception.Message
+        # An access-denied write is an environmental condition, not a kit bug:
+        # third-party AV tamper/registry-guard (e.g. Bitdefender) or a
+        # TrustedInstaller-protected key can deny an otherwise-valid elevated
+        # write. Report it as 'warn' with a clear cause instead of a hard
+        # 'error' so the run doesn't look broken - the value simply isn't
+        # applied. Genuine failures still surface as 'error'.
+        $denied = ($_.Exception -is [System.UnauthorizedAccessException]) -or
+                  ($_.Exception -is [System.Security.SecurityException]) -or
+                  ($em -match '(?i)unauthorized|access is not allowed|access is denied')
+        if ($denied) {
+            $wm = 'access denied (AV tamper-protection or protected key) - not applied: ' + $em
+            return (_New-Result -Id $Policy.Id -Status 'warn' -DurationMs $sw.ElapsedMilliseconds -Message $wm -BackupFile $backupFile)
+        }
         return (_New-Result -Id $Policy.Id -Status 'error' -DurationMs $sw.ElapsedMilliseconds -Message $em -BackupFile $backupFile)
     }
 }
