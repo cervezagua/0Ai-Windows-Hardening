@@ -639,16 +639,46 @@ function Undo-PolicyAction {
                 }
             }
             'Mitigation' {
+                # Reset to the Windows DEFAULT - never force-disable.
+                #
+                # This previously ran `Set-ProcessMitigation -System -Disable`,
+                # which does not undo the apply: it forces DEP / BottomUp /
+                # HighEntropy / SEHOP OFF. Windows 11 enables those by default,
+                # so an Apply -> Revert cycle left the machine measurably WEAKER
+                # than if the kit had never run - the opposite of what a
+                # hardening tool should do on rollback.
+                #
+                # Microsoft: once Set-ProcessMitigation has written a system
+                # value, the only way back to the original NOTSET state is to
+                # delete the MitigationOptions value. Note this clears ALL
+                # system mitigation overrides, not just the ones the kit set -
+                # that is inherent to how Windows stores them (a single packed
+                # bitfield), not a choice we can make per-mitigation.
                 try {
-                    $en = @($Policy.Enable)
-                    if ($en.Count -gt 0) {
-                        Set-ProcessMitigation -System -Disable $en -ErrorAction Stop
+                    $kern = 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\kernel'
+                    $cleared = @()
+                    foreach ($v in @('MitigationOptions', 'MitigationAuditOptions')) {
+                        try {
+                            $null = Get-ItemProperty -Path $kern -Name $v -ErrorAction Stop
+                            Remove-ItemProperty -Path $kern -Name $v -Force -ErrorAction Stop
+                            $cleared += $v
+                        } catch {
+                            # value absent = already at Windows default; not an error
+                        }
                     }
                     $sw.Stop()
-                    return (_New-Result -Id $Policy.Id -Status 'ok' -DurationMs $sw.ElapsedMilliseconds -Message ('disabled: ' + ($en -join ',')))
+                    if ($cleared.Count -gt 0) {
+                        return (_New-Result -Id $Policy.Id -Status 'ok' -DurationMs $sw.ElapsedMilliseconds -Message ('reset to Windows defaults (cleared ' + ($cleared -join ', ') + '); reboot required'))
+                    }
+                    return (_New-Result -Id $Policy.Id -Status 'ok' -DurationMs $sw.ElapsedMilliseconds -Message 'already at Windows defaults (no system override present)')
                 } catch {
                     $sw.Stop()
-                    return (_New-Result -Id $Policy.Id -Status 'warn' -DurationMs $sw.ElapsedMilliseconds -Message ('mitigation revert failed: ' + $_.Exception.Message))
+                    $em = $_.Exception.Message
+                    $denied = ($_.Exception -is [System.UnauthorizedAccessException]) -or
+                              ($_.Exception -is [System.Security.SecurityException]) -or
+                              ($em -match '(?i)unauthorized|access is not allowed|access is denied')
+                    $msg = if ($denied) { 'access denied - mitigations left as-is: ' + $em } else { 'mitigation reset failed: ' + $em }
+                    return (_New-Result -Id $Policy.Id -Status 'warn' -DurationMs $sw.ElapsedMilliseconds -Message $msg)
                 }
             }
             'FolderPurge' {

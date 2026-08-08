@@ -1,7 +1,7 @@
 # 0AI - Windows Hardening Kit
 
 ### Windows 11 Privacy, AI Disablement & Security Hardening
-**Version:** `v2.9.5`
+**Version:** `v2.10.0`
 
 **Supported baselines:** Windows 11 24H2 (OS Build **26100.8894+**) and 25H2
 (OS Build **26200.8894+**), through the **July 18 2026 out-of-band KB5121767**
@@ -80,6 +80,65 @@ the manifest. No changes.
 reinstalled by `Revert.ps1`. Opt in only if you're comfortable with that.
 
 ---
+
+## What's new in v2.10.0
+
+### Revert no longer leaves the machine weaker than stock Windows
+
+`Revert.ps1` undid `HARD.Mitigation.System` by running:
+
+```powershell
+Set-ProcessMitigation -System -Disable DEP,BottomUp,HighEntropy,SEHOP
+```
+
+That is not an undo. Windows 11 enables those mitigations **by default**, so
+force-disabling them meant an Apply → Revert cycle left the machine
+*measurably weaker than if the kit had never run* — the exact opposite of what
+a hardening tool should do on rollback.
+
+Microsoft's documentation is explicit: once `Set-ProcessMitigation` has written
+a system value, the only way back to the original `NOTSET` state is to **delete
+the `MitigationOptions` value**. Revert now does that, and reports that a
+reboot is required. Note this clears *all* system mitigation overrides, not
+only the ones the kit set — Windows stores them in a single packed bitfield,
+so per-mitigation reset is not possible.
+
+If you previously ran Apply → Revert, re-run Revert (or delete
+`MitigationOptions` under
+`HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\kernel`) and reboot to
+get Windows' defaults back.
+
+### New diagnostic: `src/Snapshot-CrashEvidence.ps1`
+
+Read-only, same pattern as `Snapshot-AIShellVerbs.ps1`. One command that
+collects everything needed to attribute a bugcheck or a crashing service:
+
+- minidump inventory with timestamps
+- bugcheck events and unexpected service terminations from the System log
+- registered antivirus products (two active AV kernel stacks is a known
+  bugcheck source)
+- loaded third-party kernel drivers grouped by risk category — overclock /
+  direct hardware-I/O, anti-cheat, security filters, encryption, VPN, display
+- current system exploit-mitigation state
+- 0AI backup folder dates, so crash timing can be correlated against runs
+
+```cmd
+powershell -NoProfile -File src\Snapshot-CrashEvidence.ps1 > crash_evidence.txt
+```
+
+It deliberately does **not** parse dumps (that needs symbols and a debugger) —
+it inventories the evidence and points at `!analyze -v` and `verifier.exe`.
+
+Written after a real investigation: a user reported random BSODs plus two
+crashing licensing services and asked whether this kit caused them. Answering
+it took a manual minidump parse, a driver inventory, an event-log sweep and a
+mitigation check. The dump showed a null-pointer read inside `ntoskrnl.exe`
+with **no third-party driver anywhere on a 151-frame stack** — and the root
+cause turned out to be an **EXPO memory overclock** enabled in BIOS, which also
+explained both user-mode service crashes. This script makes that a one-liner.
+
+For the record: **this kit installs no kernel drivers and its exploit
+mitigations are user-mode, so it cannot itself produce a kernel bugcheck.**
 
 ## What's new in v2.9.5
 
@@ -462,6 +521,40 @@ the tool does.
 
 ---
 
+## Known incompatibilities
+
+`HARD.Mitigation.System` force-enables DEP / BottomUp / HighEntropy / SEHOP on
+**every** process. On Windows 11 those are already the default for
+well-behaved software, so the only binaries whose behaviour actually changes
+are the ones that deliberately **opted out** — which is exactly the software
+most likely to need the opt-out:
+
+- **Cygwin / MSYS2 / Git for Windows.** Confirmed: the `ForceRelocateImages`
+  (mandatory ASLR) member of this policy broke Cygwin's `fork()`, which needs
+  DLLs at fixed addresses. `ForceRelocateImages` was removed from the kit for
+  this reason; the remaining four are milder but the category of risk is the
+  same.
+- **Licensing / DRM / dongle software** (CodeMeter, FlexNet, Autodesk Network
+  License Manager). Packed, anti-tamper, often legacy runtimes.
+- Old software using self-modifying code or custom exception handlers.
+
+If you use any of the above and see crashes after applying, test it: run
+`0AI_Revert.cmd` (which now resets the mitigations to Windows defaults) and
+reboot. If the problem persists, it was not this policy.
+
+**Separately — CodeMeter and behavioural antivirus.** WIBU documents that
+CodeMeter *self-terminates* when it detects a process attached to it, which is
+what behavioural AV (e.g. Bitdefender Advanced Threat Defense) does. The vendor
+fix is an AV exclusion for `CodeMeter.exe`. This is unrelated to 0AI.
+
+**And what this kit cannot cause: kernel bugchecks (BSODs).** It installs no
+kernel drivers and every mitigation it sets is user-mode. If you are
+bugchecking, run `src\Snapshot-CrashEvidence.ps1` and look at the actual
+faulting driver — an unstable memory overclock (XMP/EXPO) and third-party
+ring-0 drivers are the usual answers.
+
+---
+
 ## Locked registry keys
 
 If a policy reports:
@@ -535,6 +628,8 @@ Windows installs.
 |   |-- Apply.ps1
 |   |-- Revert.ps1
 |   |-- Verify.ps1
+|   |-- Snapshot-AIShellVerbs.ps1    read-only AI shell-verb diagnostic
+|   |-- Snapshot-CrashEvidence.ps1   read-only crash/BSOD evidence collector
 |   |-- manifest/            data: one .psd1 per category
 |   `-- module/              engine + runner + UI + launcher picker + version
 |-- tests/Manifest.Tests.ps1
@@ -573,7 +668,9 @@ Revert:
   backups from v2.9.3 and earlier are still imported)
 - Restores Defender preferences from the pre-run snapshot
 - Removes the ASR rules it added
-- Disables the process mitigations it enabled
+- **Resets** the process mitigations to Windows defaults (deletes the system
+  `MitigationOptions` override; reboot required). It does **not** force them
+  off — see the v2.10.0 notes
 - Does **not** reinstall removed Appx packages (by design)
 
 ---
