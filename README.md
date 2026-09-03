@@ -1,11 +1,11 @@
 # 0AI - Windows Hardening Kit
 
 ### Windows 11 Privacy, AI Disablement & Security Hardening
-**Version:** `v2.10.0`
+**Version:** `v2.11.0`
 
-**Supported baselines:** Windows 11 24H2 (OS Build **26100.8894+**) and 25H2
-(OS Build **26200.8894+**), through the **July 18 2026 out-of-band KB5121767**
-(which builds on the July Patch Tuesday KB5101650). Earlier builds still work
+**Supported baselines:** Windows 11 24H2 (OS Build **26100.9278+**) and 25H2
+(OS Build **26200.9278+**), through the **August 27 2026 preview KB5120998**
+(which builds on the August Patch Tuesday KB5121003). Earlier builds still work
 but the 25H2-specific switches (e.g. File Explorer AI Actions, IsoEnvBroker,
 RemoveMicrosoftCopilotApp) are no-ops.
 
@@ -80,6 +80,45 @@ the manifest. No changes.
 reinstalled by `Revert.ps1`. Opt in only if you're comfortable with that.
 
 ---
+
+## What's new in v2.11.0
+
+Covers two Windows releases: **KB5121003** (August 11 Patch Tuesday, builds
+26100.9168 / 26200.9168 — 236 CVEs including an actively-exploited privilege
+escalation) and **KB5120998** (August 27 preview, builds 26100.9278 /
+26200.9278).
+
+- **New policy: `AI.Search.DisableSearchBoxSuggestions.Explorer.HKCU`.**
+  KB5120998 gives everyone a Settings toggle to turn Bing web results **and
+  Microsoft Store suggestions** out of Search (Settings → Privacy & security →
+  Search), extending an EU-only change worldwide. Its documented registry
+  equivalent is `DisableSearchBoxSuggestions` under
+  **`HKCU\Software\Policies\Microsoft\Windows\Explorer`** — and the kit
+  only ever wrote the **HKLM** twin. Same class of scope gap as the
+  `RemoveMicrosoftCopilotApp` bug fixed in v2.8, so the per-user value is now
+  written too.
+- **Baseline bumped** to 26100.9278 / 26200.9278 (KB5120998).
+- **WMIC removal — kit unaffected.** KB5120998 removes the `wmic` command-line
+  tool. The kit has always used `Get-CimInstance`, so nothing breaks; noted
+  here so nobody reintroduces `wmic` in a future policy or diagnostic.
+
+### Reviewed and deliberately *not* added
+
+- **"Uninstall AI components" (KB5121003).** Copilot+ PCs get
+  Settings → System → AI components → uninstall for the local **Image
+  Generation** model. Real, and worth doing — but it is a **Settings-only**
+  action with no documented policy or registry equivalent, so there is nothing
+  for the manifest to write. Also note the scope: Windows ships roughly nine AI
+  components and only image generation was split into a removable package (on
+  28 July 2026); the rest stay. See *Manual steps* below.
+- **Administrator Protection (KB5120998, gradual rollout).** Genuine hardening
+  — every elevation requires Windows Hello, which kills silent background
+  elevation and token theft. It is **not** enabled by default here, on purpose:
+  it requires Windows Hello to be enrolled, and **if no PIN or biometric is set
+  up you cannot complete elevation prompts at all** — a lockout risk on a
+  machine where the kit itself needs to elevate. Microsoft also ships it off by
+  default and the rollout is staged. Documented under *Optional hardening* so
+  you can make that call deliberately.
 
 ## What's new in v2.10.0
 
@@ -459,6 +498,12 @@ No v2.2 policy was dropped. The `HideAIActionsMenu` entry is labelled
   `HideAIActionsMenu` policy on that build — there is no registry fix
   until build 26220+. Once your OS updates to 26220+, the existing
   `HideAIActionsMenu` entries will take effect.
+- Does **not** uninstall the local Image Generation AI component on Copilot+
+  PCs — that is Settings-only with no policy equivalent. See *Manual steps the
+  kit cannot perform*.
+- Does **not** enable Administrator Protection. It is real hardening but can
+  lock you out of elevation if Windows Hello is not enrolled — see *Optional
+  hardening*.
 
 These are intentional design choices.
 
@@ -518,6 +563,44 @@ If a scanner reports a *specific detection name* (e.g. `Gen:Variant...`,
 worth reporting as an issue — a named signature hit may indicate something
 we should look at, whereas a generic behavioural block is inherent to what
 the tool does.
+
+---
+
+## Optional hardening (not applied by the kit)
+
+### Administrator Protection
+
+Rolling out from **KB5120998**, off by default. Every action needing admin
+rights requires a Windows Hello check, so malware cannot silently elevate using
+an admin token.
+
+```
+Group Policy: Computer Configuration > Windows Settings > Security Settings >
+              Local Policies > Security Options >
+              "User Account Control: Configure type of Admin Approval Mode"
+              -> "Admin Approval Mode with Administrator protection"
+
+Registry:     HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+              TypeOfAdminApprovalMode (DWORD) = 2
+```
+
+**Read this before enabling.** Windows Hello must already be enrolled. With no
+PIN or biometric configured you will be unable to complete elevation prompts —
+including the one this kit needs to run. Reports on 25H2 also describe the
+toggle not appearing at all, or registry-enabled prompts never asking for a
+PIN. Enable it only on a machine with Hello working, and verify you can still
+elevate before relying on it.
+
+## Manual steps the kit cannot perform
+
+Some AI removal is Settings-only — Microsoft ships no policy or registry
+equivalent, so a manifest-driven tool cannot do it. Worth doing by hand:
+
+- **Uninstall the local Image Generation model** (Copilot+ PCs, KB5121003 or
+  later): Settings → System → **AI components** → uninstall. This is currently
+  the *only* AI component Microsoft made removable — it was split into its own
+  package on 28 July 2026. The other AI components on that page have no removal
+  path yet. `AUDIT.AI.ComponentSnapshot` reports which are present.
 
 ---
 
