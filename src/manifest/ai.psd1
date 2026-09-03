@@ -287,6 +287,23 @@
         Destructive = $false
     },
     @{
+        Id          = 'AI.Search.DisableSearchBoxSuggestions.Explorer.HKCU'
+        Category    = 'AI'
+        Group       = 'reg-safe'
+        Description = 'Disable web/Bing + Store search suggestions (Explorer policy, HKCU)'
+        MinBuild    = 0
+        Kind        = 'Registry'
+        Hive        = 'HKCU'
+        Key         = 'Software\Policies\Microsoft\Windows\Explorer'
+        Value       = 'DisableSearchBoxSuggestions'
+        Type        = 'DWord'
+        Data        = 1
+        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-search'
+        Confidence  = 'Documented'
+        Reversible  = $true
+        Destructive = $false
+    },
+    @{
         Id          = 'AI.Search.BingSearchEnabled'
         Category    = 'AI'
         Group       = 'reg-safe'

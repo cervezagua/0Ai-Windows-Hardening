@@ -1,5 +1,5 @@
 #
-# 0AI v2.10.0 - Snapshot-CrashEvidence.ps1
+# 0AI v2.11.0 - Snapshot-CrashEvidence.ps1
 #
 # Read-only diagnostic. Collects everything needed to work out why a machine
 # is bugchecking or killing services, in one command.
@@ -41,7 +41,7 @@ try {
 
 $thisDir = Split-Path -Parent $PSCommandPath
 try { Import-Module (Join-Path $thisDir 'module\OAi.Version.psm1') -Force -ErrorAction Stop } catch {}
-function _Ver { try { Get-OAiVersion } catch { 'v2.10.0' } }
+function _Ver { try { Get-OAiVersion } catch { 'v2.11.0' } }
 
 function _Print-Header {
     param([string]$Text)
