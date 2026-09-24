@@ -81,6 +81,31 @@
         Destructive = $false
     },
 
+    # ---- [A1b] Copilot hardware key: strip its AI launch action ----
+    # KB5124010 (Sept 22 2026) shipped a Settings/GPO path to repurpose the
+    # dedicated Copilot key on newer keyboards. Setting SetCopilotHardwareKey
+    # to "0" stops the key from launching any app at all (not just Copilot),
+    # so pressing it does nothing rather than opening an AI surface. User
+    # Configuration only - Microsoft has not published an HKLM/device-wide
+    # equivalent for this one.
+    @{
+        Id          = 'AI.WindowsCopilot.SetCopilotHardwareKey'
+        Category    = 'AI'
+        Group       = 'reg-safe'
+        Description = 'Disable the dedicated Copilot hardware key (stops it launching any app)'
+        MinBuild    = 26200
+        Kind        = 'Registry'
+        Hive        = 'HKCU'
+        Key         = 'Software\Policies\Microsoft\Windows\CopilotKey'
+        Value       = 'SetCopilotHardwareKey'
+        Type        = 'String'
+        Data        = '0'
+        DocUrl      = 'https://learn.microsoft.com/windows/client-management/manage-windows-copilot'
+        Confidence  = 'Documented'
+        Reversible  = $true
+        Destructive = $false
+    },
+
     # ---- [A2] WindowsAI: Recall / Click-to-Do / Settings agent ----
     @{
         Id          = 'AI.WindowsAI.AllowRecallEnablement'
