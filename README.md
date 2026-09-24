@@ -1,13 +1,13 @@
 # 0AI - Windows Hardening Kit
 
 ### Windows 11 Privacy, AI Disablement & Security Hardening
-**Version:** `v2.11.0`
+**Version:** `v2.12.0`
 
-**Supported baselines:** Windows 11 24H2 (OS Build **26100.9278+**) and 25H2
-(OS Build **26200.9278+**), through the **August 27 2026 preview KB5120998**
-(which builds on the August Patch Tuesday KB5121003). Earlier builds still work
-but the 25H2-specific switches (e.g. File Explorer AI Actions, IsoEnvBroker,
-RemoveMicrosoftCopilotApp) are no-ops.
+**Supported baselines:** Windows 11 24H2 (OS Build **26100.9550+**) and 25H2
+(OS Build **26200.9550+**), through the **September 22 2026 preview KB5124010**
+(which builds on the September Patch Tuesday KB5124008). Earlier builds still
+work but the 25H2-specific switches (e.g. File Explorer AI Actions,
+IsoEnvBroker, RemoveMicrosoftCopilotApp) are no-ops.
 
 **Runs correctly on every Windows display language.** All string matching is
 pinned to the invariant culture — see *Localization* below for why that
@@ -80,6 +80,43 @@ the manifest. No changes.
 reinstalled by `Revert.ps1`. Opt in only if you're comfortable with that.
 
 ---
+
+## What's new in v2.12.0
+
+Covers **KB5124010** (September 22 preview, builds 26100.9550 / 26200.9550,
+final 24H2 preview) building on **KB5124008** (September 8 Patch Tuesday
+security update).
+
+- **New policy: `AI.WindowsCopilot.SetCopilotHardwareKey`.** KB5124010 lets
+  newer keyboards' dedicated Copilot key be repurposed (Right Ctrl, Context
+  Menu, etc.) via Settings or Group Policy. The documented registry value,
+  `SetCopilotHardwareKey` under
+  `HKCU\Software\Policies\Microsoft\Windows\CopilotKey`, set to `"0"`,
+  stops the key from launching *any* app - it becomes a dead key rather than
+  an AI shortcut. User Configuration only; Microsoft has not published an
+  HKLM/device-wide equivalent for this one.
+- **Baseline bumped** to 26100.9550 / 26200.9550 (KB5124010).
+
+### Reviewed and deliberately *not* added
+
+- **Machine Identity Isolation (KB5124008).** A domain/Credential Guard
+  security feature Windows now begins enforcing on its own if already
+  provisioned via policy - it is not something this kit turns on, and there
+  is currently a live regression: Credential Guard-protected machines below
+  Windows Server 2025's Domain Functional Level can lose their AD secure
+  channel and get locked out of interactive domain sign-in. Out of scope for
+  a single-machine privacy/hardening kit either way, and actively risky to
+  touch while the regression is open. If you hit the lockout, Microsoft's
+  documented workaround is setting `MachineIdentityIsolation` to `0` via
+  registry/GPO/Intune, restarting, and repairing the secure channel.
+- **Camera roll backup (KB5124010).** New opt-in OneDrive photo-backup
+  toggle in Settings, set up via QR code from a phone - not something that
+  turns itself on during an update. No documented policy or registry value
+  has been published for it yet. This kit only ships registry names Microsoft
+  (or another primary source) documents - guessing at one that turns out not
+  to exist has burned a release before - so there is nothing safe to add. The
+  existing `PRIV.Explorer.ShowSyncProviderNotifications` already suppresses
+  OneDrive's sync-banner nagging.
 
 ## What's new in v2.11.0
 
