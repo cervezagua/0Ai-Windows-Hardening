@@ -8,7 +8,7 @@
 # executing v2.9.1 policies. Bump the string below and every surface follows.
 #
 
-$script:OAI_VERSION = 'v2.14.3'
+$script:OAI_VERSION = 'v2.14.4'
 
 function Get-OAiVersion {
     [CmdletBinding()]
