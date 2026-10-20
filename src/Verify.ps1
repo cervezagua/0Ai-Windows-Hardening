@@ -1,5 +1,5 @@
 #
-# 0AI v2.3 - Verify.ps1
+# 0AI v2.14.0 - Verify.ps1
 #
 # Read-only: queries current state of every manifest policy and prints a
 # table showing Id | Expected | Current | Status.
@@ -34,45 +34,31 @@ try {
 
 $thisDir     = Split-Path -Parent $PSCommandPath
 $manifestDir = Join-Path $thisDir 'manifest'
+$moduleDir   = Join-Path $thisDir 'module'
+
+Import-Module (Join-Path $moduleDir 'OAi.Manifest.psm1') -Force
+Import-Module (Join-Path $moduleDir 'OAi.Engine.psm1') -Force
 
 function _Resolve-Hive { param([string]$H) switch ($H) { 'HKLM' { 'HKLM:' } 'HKCU' { 'HKCU:' } default { $H + ':' } } }
-
-# Import-PowerShellDataFile rejects top-level arrays. Parse via AST + SafeGetValue.
-function _Collect-Hashtables {
-    param($Val, [System.Collections.Generic.List[object]]$Acc)
-    if ($null -eq $Val) { return }
-    if ($Val -is [System.Collections.IDictionary]) { [void]$Acc.Add($Val); return }
-    if ($Val -is [System.Collections.IEnumerable] -and $Val -isnot [string]) {
-        foreach ($v in $Val) { _Collect-Hashtables -Val $v -Acc $Acc }
-        return
-    }
-}
-function _Load-PolicyManifest {
-    param([string]$Path)
-    $tokens = $null
-    $errs   = $null
-    $ast = [System.Management.Automation.Language.Parser]::ParseFile($Path, [ref]$tokens, [ref]$errs)
-    if ($errs -and @($errs).Count -gt 0) {
-        throw ('parse error in {0}: {1}' -f (Split-Path -Leaf $Path), @($errs)[0].Message)
-    }
-    $stmts = @($ast.EndBlock.Statements)
-    if ($stmts.Count -eq 0) { return ,@() }
-    $val = $stmts[0].PipelineElements[0].Expression.SafeGetValue()
-    $acc = New-Object System.Collections.Generic.List[object]
-    _Collect-Hashtables -Val $val -Acc $acc
-    return ,$acc.ToArray()
-}
 
 $manifestFiles = Get-ChildItem -Path $manifestDir -Filter '*.psd1' -ErrorAction Stop
 $all = New-Object System.Collections.Generic.List[object]
 foreach ($mf in $manifestFiles) {
     try {
-        $data = _Load-PolicyManifest -Path $mf.FullName
+        $data = Import-OAiManifestFile -Path $mf.FullName
         foreach ($p in $data) { if ($p) { $all.Add($p) } }
     } catch {
         Write-Warning ('[!] Failed to load manifest {0}: {1}' -f $mf.Name, $_.Exception.Message)
     }
 }
+
+try {
+    $interactiveUser = Get-OAiInteractiveUser
+    $elevatedUser    = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    if ($interactiveUser -and -not [string]::Equals($interactiveUser, $elevatedUser, [System.StringComparison]::OrdinalIgnoreCase)) {
+        Write-Host ('[!] Running as {0}, but {1} is signed in at this desktop. Per-user (HKCU) policies land in {0}''s profile, not {1}''s, and the HKCU results below reflect {0}''s profile. To cover {1}, run the kit while signed in as {1}, using an admin account of their own.' -f $elevatedUser, $interactiveUser) -ForegroundColor Yellow
+    }
+} catch {}
 
 $rows = New-Object System.Collections.Generic.List[object]
 foreach ($p in $all) {

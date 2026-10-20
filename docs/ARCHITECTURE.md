@@ -15,7 +15,10 @@ for reference.
   action backwards through the same dispatcher.
 - **PowerShell-first** so we can actually test the code. Windows PowerShell
   5.1 is the minimum baseline.
-- **No regressions**: every v2.2 policy is preserved as a `.psd1` record.
+- **No regressions**: every v2.2 policy is preserved as a `.psd1` record,
+  except `DisableSettingsAgenticSearch`, which v2.13.0 removed because it
+  never existed (the real control is `DisableSettingsAgent`). Revert can
+  still undo it via `src/retired/retired.psd1`.
 
 ## 2. The 5-category model
 
@@ -105,7 +108,10 @@ guarded by `$PSVersionTable.PSVersion.Major -ge 7` checks. None are required.
 |   |   +-- hard.psd1
 |   |   +-- debloat.psd1
 |   |   +-- audit.psd1
+|   +-- retired/
+|   |   +-- retired.psd1  Ids older versions applied; Revert can still undo them
 |   +-- module/
+|       +-- OAi.Manifest.psm1     shared manifest + retired-list loader, -Select check
 |       +-- OAi.Engine.psm1       primitives (Invoke/Test/Backup/Undo)
 |       +-- OAi.Runner.psm1       orchestration + parallelism
 |       +-- OAi.UI.Console.psm1   live progress display
@@ -210,13 +216,20 @@ serialized to `run.json`.
 1. Finds the newest `0AI_Backups/<timestamp>` folder.
 2. Reads `run.json`.
 3. For each result, looks up the matching policy record in the current
-   manifest.
+   manifest, or else in `src/retired/retired.psd1`. An Id in neither is
+   skipped with a `[warn]` on the console and in `revert.log`.
 4. Calls `Undo-PolicyAction`, which dispatches by `Kind`:
-   - Registry → `reg import <snapshot>`
+   - Registry → restore the one value from its per-value JSON snapshot
+     (value did not exist before → delete it). Legacy `.reg` backups
+     (v2.9.3 and earlier) are read in memory for that one value only;
+     `reg import` is never run. The location always comes from the manifest
+     or retired list, never from the backup, because the backup folder is
+     user-writable and Revert runs elevated
    - Service → restore startup type from JSON snapshot
    - DefenderPref → restore preference from run-snapshot JSON
    - DefenderAsr → `Remove-MpPreference`
-   - Mitigation → `Set-ProcessMitigation -System -Disable <set>`
+   - Mitigation → delete the system `MitigationOptions` override (reset to
+     Windows defaults; reboot required)
    - AppxRemove → **no-op** (matches v2.2 by design)
    - FolderPurge → **no-op** (destructive, documented)
    - Report → no-op

@@ -8,8 +8,9 @@
 #               HKCU = User) Microsoft documents for it
 #   BestEffort  real value, but written at a scope Microsoft does not document
 #               (a mirror kept for coverage) - may be ignored by Windows
-#   Community   identified by third-party sources, not by Microsoft
-# Audited against the WindowsAI Policy CSP reference in v2.13.0.
+#   Community   the registry name OR the data written comes only from
+#               third-party sources (DocUrl empty = no source found)
+# Every entry re-audited against Microsoft sources in v2.14.0.
 #
 @(
 
@@ -185,7 +186,7 @@
         Destructive = $false
     },
     @{
-        Id          = 'AI.WindowsAI.DisableRecallDataProviders'
+        Id          = 'AI.WindowsAI.DisableRecallDataProviders.HKLM'
         Category    = 'AI'
         Group       = 'reg-safe'
         Description = 'Disable Recall data providers (HKLM mirror, best-effort; documented scope is HKCU)'
@@ -279,12 +280,12 @@
         Id          = 'AI.Recall.PurgeDataFolder'
         Category    = 'AI'
         Group       = 'folder'
-        Description = 'Best-effort purge of Recall snapshot folder (destructive)'
+        Description = 'Purge folder some guides attribute to Recall (path not documented by Microsoft; destructive). Documented deletion is AllowRecallEnablement=0'
         MinBuild    = 0
         Kind        = 'FolderPurge'
         Path        = '%LOCALAPPDATA%\Microsoft\Windows\Recall'
-        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-windowsai'
-        Confidence  = 'Documented'
+        DocUrl      = 'https://learn.microsoft.com/windows/client-management/manage-recall'
+        Confidence  = 'Community'
         Reversible  = $false
         Destructive = $true
     },
@@ -294,7 +295,7 @@
         Id          = 'AI.Search.DisableSearchBoxSuggestions.Search'
         Category    = 'AI'
         Group       = 'reg-safe'
-        Description = 'Disable web/Bing search box suggestions (Windows Search policy)'
+        Description = 'Disable web search box suggestions (Windows Search key; Microsoft documents this value only under ...\Explorer)'
         MinBuild    = 0
         Kind        = 'Registry'
         Hive        = 'HKLM'
@@ -302,8 +303,8 @@
         Value       = 'DisableSearchBoxSuggestions'
         Type        = 'DWord'
         Data        = 1
-        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-search'
-        Confidence  = 'Documented'
+        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-admx-windowsexplorer'
+        Confidence  = 'Community'
         Reversible  = $true
         Destructive = $false
     },
@@ -311,7 +312,7 @@
         Id          = 'AI.Search.DisableSearchBoxSuggestions.Explorer'
         Category    = 'AI'
         Group       = 'reg-safe'
-        Description = 'Disable web/Bing search box suggestions (Explorer policy)'
+        Description = 'Disable web search box suggestions (HKLM mirror, best-effort; documented scope is HKCU)'
         MinBuild    = 0
         Kind        = 'Registry'
         Hive        = 'HKLM'
@@ -319,8 +320,8 @@
         Value       = 'DisableSearchBoxSuggestions'
         Type        = 'DWord'
         Data        = 1
-        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-search'
-        Confidence  = 'Documented'
+        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-admx-windowsexplorer'
+        Confidence  = 'BestEffort'
         Reversible  = $true
         Destructive = $false
     },
@@ -328,7 +329,7 @@
         Id          = 'AI.Search.DisableSearchBoxSuggestions.Explorer.HKCU'
         Category    = 'AI'
         Group       = 'reg-safe'
-        Description = 'Disable web/Bing + Store search suggestions (Explorer policy, HKCU)'
+        Description = 'Disable web/Bing + Store search suggestions (HKCU, documented User scope)'
         MinBuild    = 0
         Kind        = 'Registry'
         Hive        = 'HKCU'
@@ -336,7 +337,7 @@
         Value       = 'DisableSearchBoxSuggestions'
         Type        = 'DWord'
         Data        = 1
-        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-search'
+        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-admx-windowsexplorer'
         Confidence  = 'Documented'
         Reversible  = $true
         Destructive = $false
@@ -345,7 +346,7 @@
         Id          = 'AI.Search.BingSearchEnabled'
         Category    = 'AI'
         Group       = 'reg-safe'
-        Description = 'Disable Bing search in user search box'
+        Description = 'Disable Bing search in user search box (community value; documented route is ConnectedSearchUseWeb)'
         MinBuild    = 0
         Kind        = 'Registry'
         Hive        = 'HKCU'
@@ -354,7 +355,7 @@
         Type        = 'DWord'
         Data        = 0
         DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-search'
-        Confidence  = 'Documented'
+        Confidence  = 'Community'
         Reversible  = $true
         Destructive = $false
     },
@@ -362,7 +363,7 @@
         Id          = 'AI.Search.CortanaConsent'
         Category    = 'AI'
         Group       = 'reg-safe'
-        Description = 'Clear Cortana consent flag'
+        Description = 'Clear Cortana consent flag (community value)'
         MinBuild    = 0
         Kind        = 'Registry'
         Hive        = 'HKCU'
@@ -371,7 +372,7 @@
         Type        = 'DWord'
         Data        = 0
         DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-search'
-        Confidence  = 'Documented'
+        Confidence  = 'Community'
         Reversible  = $true
         Destructive = $false
     },
@@ -381,7 +382,7 @@
         Id          = 'AI.SmartActions.SmartActionsState'
         Category    = 'AI'
         Group       = 'reg-safe'
-        Description = 'Disable Suggested Actions (SmartActions)'
+        Description = 'Disable Suggested Actions (no source found for this value)'
         MinBuild    = 0
         Kind        = 'Registry'
         Hive        = 'HKCU'
@@ -389,8 +390,8 @@
         Value       = 'SmartActionsState'
         Type        = 'DWord'
         Data        = 0
-        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-smartactions'
-        Confidence  = 'Documented'
+        DocUrl      = ''
+        Confidence  = 'Community'
         Reversible  = $true
         Destructive = $false
     },
@@ -406,7 +407,7 @@
         Value       = 'RestrictImplicitTextCollection'
         Type        = 'DWord'
         Data        = 1
-        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-textinput'
+        DocUrl      = 'https://learn.microsoft.com/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services'
         Confidence  = 'Documented'
         Reversible  = $true
         Destructive = $false
@@ -423,7 +424,7 @@
         Value       = 'RestrictImplicitInkCollection'
         Type        = 'DWord'
         Data        = 1
-        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-textinput'
+        DocUrl      = 'https://learn.microsoft.com/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services'
         Confidence  = 'Documented'
         Reversible  = $true
         Destructive = $false
@@ -442,7 +443,7 @@
         Value       = 'HubsSidebarEnabled'
         Type        = 'DWord'
         Data        = 0
-        DocUrl      = 'https://learn.microsoft.com/deployedge/microsoft-edge-policies'
+        DocUrl      = 'https://learn.microsoft.com/deployedge/microsoft-edge-browser-policies/hubssidebarenabled'
         Confidence  = 'Documented'
         Reversible  = $true
         Destructive = $false
@@ -451,7 +452,7 @@
         Id          = 'AI.Edge.DiscoverEnabled'
         Category    = 'AI'
         Group       = 'reg-safe'
-        Description = 'Disable Edge Discover'
+        Description = 'Disable Edge Discover (not a Microsoft Edge policy name; the real EdgeDiscoverEnabled is obsolete since Edge 105)'
         MinBuild    = 0
         Kind        = 'Registry'
         Hive        = 'HKLM'
@@ -459,8 +460,8 @@
         Value       = 'DiscoverEnabled'
         Type        = 'DWord'
         Data        = 0
-        DocUrl      = 'https://learn.microsoft.com/deployedge/microsoft-edge-policies'
-        Confidence  = 'Documented'
+        DocUrl      = 'https://learn.microsoft.com/deployedge/microsoft-edge-browser-policies/edgediscoverenabled'
+        Confidence  = 'Community'
         Reversible  = $true
         Destructive = $false
     },
@@ -468,7 +469,7 @@
         Id          = 'AI.Edge.EdgeCopilotEnabled'
         Category    = 'AI'
         Group       = 'reg-safe'
-        Description = 'Disable Edge Copilot'
+        Description = 'Disable Edge Copilot (documented for Edge on Android/iOS only; no effect on Windows)'
         MinBuild    = 0
         Kind        = 'Registry'
         Hive        = 'HKLM'
@@ -476,8 +477,8 @@
         Value       = 'EdgeCopilotEnabled'
         Type        = 'DWord'
         Data        = 0
-        DocUrl      = 'https://learn.microsoft.com/deployedge/microsoft-edge-policies'
-        Confidence  = 'Documented'
+        DocUrl      = 'https://learn.microsoft.com/deployedge/microsoft-edge-policies/edgecopilotenabled'
+        Confidence  = 'BestEffort'
         Reversible  = $true
         Destructive = $false
     },
@@ -487,7 +488,7 @@
         Id          = 'AI.Explorer.HideAIActionsMenu.HKLM'
         Category    = 'AI'
         Group       = 'reg-safe'
-        Description = 'Hide File Explorer AI Actions menu (HKLM, best-effort; bypassed on 26200+)'
+        Description = 'Hide File Explorer AI Actions menu (HKLM; community value, not in Microsoft docs, effect unverified on any build)'
         MinBuild    = 26200
         Kind        = 'Registry'
         Hive        = 'HKLM'
@@ -495,7 +496,7 @@
         Value       = 'HideAIActionsMenu'
         Type        = 'DWord'
         Data        = 1
-        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-explorer'
+        DocUrl      = ''
         Confidence  = 'Community'
         Reversible  = $true
         Destructive = $false
@@ -504,7 +505,7 @@
         Id          = 'AI.Explorer.HideAIActionsMenu.HKCU'
         Category    = 'AI'
         Group       = 'reg-safe'
-        Description = 'Hide File Explorer AI Actions menu (HKCU, best-effort; bypassed on 26200+)'
+        Description = 'Hide File Explorer AI Actions menu (HKCU; community value, not in Microsoft docs, effect unverified on any build)'
         MinBuild    = 26200
         Kind        = 'Registry'
         Hive        = 'HKCU'
@@ -512,7 +513,7 @@
         Value       = 'HideAIActionsMenu'
         Type        = 'DWord'
         Data        = 1
-        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-explorer'
+        DocUrl      = ''
         Confidence  = 'Community'
         Reversible  = $true
         Destructive = $false
@@ -557,7 +558,7 @@
         Id          = 'AI.Narrator.ImageDescriptionsEnabled'
         Category    = 'AI'
         Group       = 'reg-safe'
-        Description = 'Disable Narrator cloud-assisted rich image descriptions'
+        Description = 'Disable Narrator cloud-assisted rich image descriptions (no source found for this value)'
         MinBuild    = 0
         Kind        = 'Registry'
         Hive        = 'HKCU'
@@ -565,8 +566,8 @@
         Value       = 'ImageDescriptionsEnabled'
         Type        = 'DWord'
         Data        = 0
-        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-accessibility'
-        Confidence  = 'BestEffort'
+        DocUrl      = ''
+        Confidence  = 'Community'
         Reversible  = $true
         Destructive = $false
     },
@@ -576,7 +577,7 @@
         Id          = 'AI.Notepad.DisableAIFeatures.Notepad'
         Category    = 'AI'
         Group       = 'reg-safe'
-        Description = 'Disable Notepad AI features (HKLM Notepad policy)'
+        Description = 'Disable Notepad AI features (HKLM Microsoft\Notepad key; no source uses this key)'
         MinBuild    = 0
         Kind        = 'Registry'
         Hive        = 'HKLM'
@@ -584,8 +585,8 @@
         Value       = 'DisableAIFeatures'
         Type        = 'DWord'
         Data        = 1
-        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-notepad'
-        Confidence  = 'Documented'
+        DocUrl      = 'https://learn.microsoft.com/windows/client-management/manage-notepad'
+        Confidence  = 'Community'
         Reversible  = $true
         Destructive = $false
     },
@@ -593,7 +594,7 @@
         Id          = 'AI.Notepad.DisableAIFeatures.WindowsNotepad'
         Category    = 'AI'
         Group       = 'reg-safe'
-        Description = 'Disable Notepad AI features (HKLM WindowsNotepad policy)'
+        Description = 'Disable Notepad AI features (HKLM WindowsNotepad, documented machine policy)'
         MinBuild    = 0
         Kind        = 'Registry'
         Hive        = 'HKLM'
@@ -601,7 +602,7 @@
         Value       = 'DisableAIFeatures'
         Type        = 'DWord'
         Data        = 1
-        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-notepad'
+        DocUrl      = 'https://learn.microsoft.com/windows/client-management/manage-notepad'
         Confidence  = 'Documented'
         Reversible  = $true
         Destructive = $false
@@ -612,7 +613,7 @@
         Id          = 'AI.Notepad.DisableAIFeatures.HKCU'
         Category    = 'AI'
         Group       = 'reg-safe'
-        Description = 'Disable Notepad AI features (HKCU user-scope)'
+        Description = 'Disable Notepad AI features (HKCU mirror, best-effort; documented policy is machine-wide)'
         MinBuild    = 0
         Kind        = 'Registry'
         Hive        = 'HKCU'
@@ -620,8 +621,8 @@
         Value       = 'DisableAIFeatures'
         Type        = 'DWord'
         Data        = 1
-        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-notepad'
-        Confidence  = 'Documented'
+        DocUrl      = 'https://learn.microsoft.com/windows/client-management/manage-notepad'
+        Confidence  = 'BestEffort'
         Reversible  = $true
         Destructive = $false
     },
@@ -639,7 +640,7 @@
         Value       = 'DisableCocreator'
         Type        = 'DWord'
         Data        = 1
-        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-paint'
+        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-windowsai#disablecocreator'
         Confidence  = 'Documented'
         Reversible  = $true
         Destructive = $false
@@ -656,7 +657,7 @@
         Value       = 'DisableGenerativeFill'
         Type        = 'DWord'
         Data        = 1
-        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-paint'
+        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-windowsai#disablegenerativefill'
         Confidence  = 'Documented'
         Reversible  = $true
         Destructive = $false
@@ -673,7 +674,7 @@
         Value       = 'DisableImageCreator'
         Type        = 'DWord'
         Data        = 1
-        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-paint'
+        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-windowsai#disableimagecreator'
         Confidence  = 'Documented'
         Reversible  = $true
         Destructive = $false
@@ -684,7 +685,7 @@
         Id          = 'AI.Capability.systemAIModels.HKLM'
         Category    = 'AI'
         Group       = 'reg-safe'
-        Description = 'systemAIModels capability access = Deny (machine)'
+        Description = 'systemAIModels capability access = Deny (machine; community ConsentStore value)'
         MinBuild    = 0
         Kind        = 'Registry'
         Hive        = 'HKLM'
@@ -692,8 +693,8 @@
         Value       = 'Value'
         Type        = 'String'
         Data        = 'Deny'
-        DocUrl      = 'https://learn.microsoft.com/windows/privacy/manage-windows-1809-endpoints'
-        Confidence  = 'Documented'
+        DocUrl      = 'https://learn.microsoft.com/windows/ai/apis/get-started'
+        Confidence  = 'Community'
         Reversible  = $true
         Destructive = $false
     },
@@ -701,7 +702,7 @@
         Id          = 'AI.Capability.systemAIModels.HKCU'
         Category    = 'AI'
         Group       = 'reg-safe'
-        Description = 'systemAIModels capability access = Deny (user)'
+        Description = 'systemAIModels capability access = Deny (user; community ConsentStore value)'
         MinBuild    = 0
         Kind        = 'Registry'
         Hive        = 'HKCU'
@@ -709,8 +710,8 @@
         Value       = 'Value'
         Type        = 'String'
         Data        = 'Deny'
-        DocUrl      = 'https://learn.microsoft.com/windows/privacy/manage-windows-1809-endpoints'
-        Confidence  = 'Documented'
+        DocUrl      = 'https://learn.microsoft.com/windows/ai/apis/get-started'
+        Confidence  = 'Community'
         Reversible  = $true
         Destructive = $false
     }

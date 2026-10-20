@@ -1,7 +1,7 @@
 # 0AI - Windows Hardening Kit
 
 ### Windows 11 Privacy, AI Disablement & Security Hardening
-**Version:** `v2.13.0`
+**Version:** `v2.14.0`
 
 **Supported baselines:** Windows 11 25H2 (OS Build **26200.9711+**) and 26H2
 (OS Build **26300.9711+**), through the **October 13 2026 Patch Tuesday
@@ -55,6 +55,15 @@ REM Run only specific policies by ID:
 0AI_Apply.cmd -Select AI.WindowsAI.AllowRecallEnablement,HARD.Defender.PUAProtection
 ```
 
+If any `-Select` Id is unknown or retired, Apply prints an error (for a
+retired Id, naming its replacement) and exits with code `2` without applying
+anything, also under `-WhatIf`.
+
+Run Apply while signed in as the person whose settings you want changed,
+with an admin account of their own. If you approve the UAC prompt with a
+*different* admin account, per-user (HKCU) policies land in that account's
+profile; the kit warns when this happens but does not redirect the writes.
+
 ### Revert
 1. **Right-click** `0AI_Revert.cmd`
 2. Select **Run as Administrator**
@@ -78,7 +87,7 @@ the manifest. No changes.
 
 | Code      | Name                               | Default? | What it does                                                                 |
 |-----------|------------------------------------|----------|------------------------------------------------------------------------------|
-| `AI`      | Disable AI across the OS           | yes      | Copilot (disable + remove app), Recall, Click-to-Do, IsoEnvBroker (agentic framework), Paint AI (incl. Remove Background / Generative Erase), Photos AI (Blur / Erase Objects), Notepad AI, Edge AI, `systemAIModels=Deny` |
+| `AI`      | Disable AI across the OS           | yes      | Copilot (disable + remove app), Recall, Click-to-Do, IsoEnvBroker (agentic framework), Paint AI (Cocreator, Generative Fill, Image Creator), Notepad AI, Edge AI, `systemAIModels=Deny`. No Photos AI policy (the earlier ones were not real; removed in v2.5) |
 | `PRIV`    | Privacy & telemetry                | yes      | DiagTrack/dmwappush off, AllowTelemetry, Advertising ID, WER, Activity History, sync banners, online speech recognition, Cloud Content / Spotlight / consumer features, Tailored Experiences, online tips, Find My Device, feedback notifications |
 | `HARD`    | Security hardening                 | yes      | RDP off, Restricted Admin, Defender PUA + ASR subset, Exploit Protection, batch file locking |
 | `DEBLOAT` | Remove bundled apps (destructive)  | **no**   | Widgets / WebExperience, Phone Link / YourPhone / CrossDevice                |
@@ -88,6 +97,151 @@ the manifest. No changes.
 reinstalled by `Revert.ps1`. Opt in only if you're comfortable with that.
 
 ---
+
+## What's new in v2.14.0
+
+No new Windows release to cover. This release fixes the findings of a code
+review of v2.13.0, plus what fixing them uncovered.
+
+### Security: Revert no longer runs `reg import`
+
+Backups live in `%USERPROFILE%\0AI_Backups`, which unelevated programs can
+write, and Revert runs elevated. Earlier versions handed the backup file named
+in `run.json` straight to `reg.exe import`, so Revert trusted more of that
+folder than it needed to. Now:
+
+- **Legacy `.reg` backups** (v2.9.3 and earlier) are read once into memory,
+  and only the one policy value is taken: under exactly the policy's key, as
+  a dword or plain string, then written to the location the manifest names.
+  Anything else in the file is refused.
+- **Backup files are located by file name inside the backup folder only.**
+  The path recorded in `run.json` is not followed.
+- **JSON snapshot restores** take the value name from the manifest, check
+  that the snapshot is for that key, and accept only real registry types
+  (`String`, `ExpandString`, `DWord`, `QWord`, `Binary`, `MultiString`).
+
+**Known limitation, not fixed:** a program that can write your backup folder
+can still change the recorded *previous* value of a setting the kit manages,
+for example so that Revert switches RDP back on. Keep the kit folder and its
+backups somewhere only you control. Locking the backup folder down to
+Administrators is a candidate for a future release.
+
+### Revert
+
+- **Revert can undo policies the kit no longer ships.** New
+  `src/retired/retired.psd1` lists Ids an older version applied but the
+  manifest has since dropped:
+  - `AI.WindowsAI.DisableSettingsAgenticSearch` (removed in v2.13.0)
+  - the five non-existent image-AI policies removed in v2.5:
+    `AI.Paint.DisableRemoveBackground`, `AI.Paint.DisableGenerativeErase`,
+    `AI.Photos.DisableAIEditing`, `AI.Photos.DisableBlurBackground`,
+    `AI.Photos.DisableEraseObjects`
+  - `AI.WindowsAI.DisableRecallDataProviders`, renamed in this release to
+    `AI.WindowsAI.DisableRecallDataProviders.HKLM`
+
+  Revert takes the registry location for these from the list, never from the
+  backup. For inert values (`Cleanup = $true` in the list) it also removes
+  the leftover value when no JSON snapshot shows it existed before Apply.
+- **Deliberately not listed:** `AI.Explorer.BlockAskCopilotShellExt.HKLM`
+  (removed in v2.9.1). Reverting it means touching the
+  `Shell Extensions\Blocked` key that Bitdefender blocked, so it stays
+  skipped.
+- **Unknown Ids are visible.** An Id in `run.json` that is neither live nor
+  retired now prints a `[warn] … skipped` line on the console, not only in
+  `revert.log`.
+- **Plain Revert skips folders without a `run.json`.** A `-WhatIf` dry run or
+  a rejected `-Select` list leaves a backup folder holding only `apply.log`;
+  Revert used to pick that folder as the newest and stop. It now uses the
+  newest folder that has a `run.json`.
+- **Legacy `.reg` backups that hold the kit's own value are not trusted.**
+  v2.9.3 and earlier wrote one file per registry key and overwrote it for
+  each policy on that key, so for every policy but the last on a shared key
+  the file already held the value the kit set. Revert used to "restore" that
+  value. It now spots the case, deletes the value best-effort and warns, the
+  same as when no backup exists.
+- **`ExpandString` values are backed up unexpanded**, so a restore writes
+  back `%SystemRoot%`-style text and not the expanded path.
+
+### Apply
+
+- **`-Select A,B` works from `0AI_Apply.cmd`.** `powershell -File` passes a
+  comma list as one string; Apply now splits it, so the Quick Start example
+  runs both Ids.
+- **`-Select` fails fast.** Unknown Ids make Apply print an error and
+  `exit 2` without applying anything, also under `-WhatIf`. A retired Id's
+  error names its replacement.
+- **Warning when elevated as a different account.** If the account running
+  Apply or Verify isn't the one signed in at the desktop (e.g. a standard
+  user approving UAC with a separate admin account), per-user (HKCU) policies
+  land in the admin's profile, not the user's. The kit now warns; it does
+  not redirect the writes. To cover that user, run the kit while signed in
+  as them, with an admin account of their own.
+- **Registry keys are created without deleting anything.** `New-Item -Force`
+  on an existing registry key deletes and recreates it; on the parallel
+  (PowerShell 7 ThreadJob) path that could wipe a sibling policy's value.
+  Keys are now created with `RegistryKey.CreateSubKey`, which opens or
+  creates and never deletes.
+- **No System Restore point for dry runs or aborted runs.** The restore
+  point is now created just before changes are made, after the `-WhatIf`
+  exit and the `-Select` check.
+
+### Tests
+
+**The Pester schema tests actually run now.** They never passed on Pester 5
+or later: helpers were defined at script top level, which Pester only runs
+during discovery, so every test failed with `Get-AllPolicies is not
+recognized`. Fixed. New checks enforce:
+
+- `Confidence` is `Documented`, `BestEffort` or `Community`;
+- `DocUrl` is https (a `Community` entry may leave it empty, meaning no
+  source was found);
+- `Hive` is `HKLM` / `HKCU` and `Type` is a real registry type;
+- no two policies write the same Hive + Key + Value;
+- the retired list's schema (required fields, no duplicates, no Id both
+  retired and live, every `ReplacedBy` exists);
+- no registry value name, live or retired, contains wildcard characters
+  (`*`, `?`, `[`, `]`).
+
+29 tests pass under Pester 6.2.0 / pwsh 7.6.7.
+
+### Provenance audit of every AI entry
+
+The `Confidence` labels were re-checked against Microsoft documentation.
+v2.13.0 labelled 29 of the 38 AI entries `Documented` (v2.12.0: 33); 17
+actually are. The `src/manifest/ai.psd1` header defines what each label
+means, and each entry's `Description` / `DocUrl` says what was found for it.
+
+`HideAIActionsMenu` no longer claims any build range: no source documents
+which builds honour it. The "works from 26220" idea came from release notes
+about a different, Settings-driven change (the AI Actions section hides when
+every action is turned off under Settings > Apps > Actions).
+
+### Under review, kept for now
+
+These entries have no working source and may do nothing. They stay in this
+release pending the maintainer's decision:
+
+- `AI.Edge.DiscoverEnabled`: not an Edge policy name; the real
+  `EdgeDiscoverEnabled` has been obsolete since Edge 105.
+- `AI.Edge.EdgeCopilotEnabled`: documented for Android / iOS only.
+- `AI.SmartActions.SmartActionsState`: no source found.
+- `AI.Narrator.ImageDescriptionsEnabled`: no source found.
+- `AI.Search.DisableSearchBoxSuggestions.Search`: Microsoft documents this
+  value under `…\Explorer` only.
+- `AI.Recall.PurgeDataFolder`: destructive, and deletes a folder Microsoft
+  doesn't document. `AllowRecallEnablement = 0`, which the kit already sets,
+  is Microsoft's documented way to delete snapshots.
+- `AI.Notepad.DisableAIFeatures.Notepad`: no source uses the
+  `Microsoft\Notepad` key.
+
+### Smaller items
+
+- `Snapshot-AIShellVerbs.ps1` builds its list of kit-managed keys from the
+  manifest and reports leftover values from retired policies.
+- A shared loader, `src/module/OAi.Manifest.psm1`, replaces three copied
+  ones.
+- `Snapshot-CrashEvidence.ps1` prints `unknown` rather than a stale version
+  if the version module fails to load.
 
 ## What's new in v2.13.0
 
@@ -109,7 +263,8 @@ Covers **KB5127648** (October 13 2026 Patch Tuesday — builds 26100.9711 /
     agentic search experience" is `DisableSettingsAgent`, which the kit
     already writes. Older backups that recorded it will show one harmless
     `[warn] policy not in current manifest` on Revert, and the inert value
-    may remain in the registry — nothing reads it.
+    may remain in the registry — nothing reads it. (Corrected in v2.14.0:
+    it is now a retired Id, which Revert reverts and cleans up — no warning.)
   - **`AI.WindowsCopilot.SetCopilotHardwareKey` relabelled `Community`.**
     The policy is documented, but its documented value is an app AUMID (the
     app the key should open). `"0"` is a community-reported value, not a
@@ -186,7 +341,9 @@ security update).
   (or another primary source) documents - guessing at one that turns out not
   to exist has burned a release before - so there is nothing safe to add. The
   existing `PRIV.Explorer.ShowSyncProviderNotifications` already suppresses
-  OneDrive's sync-banner nagging.
+  OneDrive's sync-banner nagging. (Corrected in v2.14.0: the kit does ship
+  some entries only third parties document; they are labelled `Community` in
+  the manifest.)
 
 ## What's new in v2.11.0
 
@@ -353,7 +510,9 @@ This is also strictly more correct:
 
 Backup folders written by v2.9.3 and earlier still contain `.reg` files;
 `Revert.ps1` detects those and keeps using `reg import` for them, so old
-backups remain restorable.
+backups remain restorable. (Corrected in v2.14.0: Revert no longer runs
+`reg import` at all; it reads the one policy value from a legacy `.reg` in
+memory. See the v2.14.0 notes.)
 
 > This removes the one trigger Bitdefender named a file for. Advanced Threat
 > Defense may still score the process on its other behaviour (changing
@@ -478,6 +637,8 @@ Found by reading a real apply log from a Turkish-locale machine.
   Similarly, `AgentConnectorMinimumPolicy` (agent connectors CSP) still
   has no documented allowed values, so it stays out of the manifest —
   the kit only ships registry values Microsoft actually documents.
+  (Corrected in v2.14.0: not every shipped entry is Microsoft-documented;
+  the ones that aren't are labelled `Community` in the manifest.)
 
 ## What's new in v2.7
 
@@ -521,7 +682,10 @@ Found by reading a real apply log from a Turkish-locale machine.
   background, Erase objects) remain functional. The existing
   `HideAIActionsMenu` entries are retained (they'll work once your
   build updates to 26220+) and re-labelled to say "best-effort;
-  bypassed on 26200+".
+  bypassed on 26200+". (Corrected in v2.14.0: no source documents which
+  builds honour `HideAIActionsMenu`, so the kit no longer claims any build
+  range. The 26220 figure came from release notes about a different,
+  Settings-driven change.)
 - **New diagnostic `src/Snapshot-AIShellVerbs.ps1`**. Read-only.
   Enumerates the shell verbs registered under
   `HKLM\SOFTWARE\Classes\SystemFileAssociations\image\Shell` (and
@@ -565,11 +729,15 @@ Found by reading a real apply log from a Turkish-locale machine.
 - **`Verify.ps1`** is a first-class read-only command that diffs expected
   vs current state for every policy.
 - **Pester schema tests** in `tests/Manifest.Tests.ps1` run anywhere with
-  `pwsh` installed (no Windows cmdlets required).
+  `pwsh` installed (no Windows cmdlets required). (Corrected in v2.14.0:
+  they never passed on Pester 5 or later — every test failed with
+  `Get-AllPolicies is not recognized`. Fixed in v2.14.0.)
 
 No v2.2 policy was dropped. The `HideAIActionsMenu` entry is labelled
 `Community` and the Narrator `ImageDescriptionsEnabled` entry is labelled
-`BestEffort`, matching the v2.2 caveats.
+`BestEffort`, matching the v2.2 caveats. (Corrected in v2.14.0: v2.13.0
+removed the v2.2 policy `DisableSettingsAgenticSearch`, because it never
+existed. The Narrator entry is now `Community`: no source was found for it.)
 
 ### v2.3 hotfixes (post-release)
 
@@ -599,12 +767,17 @@ No v2.2 policy was dropped. The `HideAIActionsMenu` entry is labelled
 - Does **not** probe or report Smart App Control state.
 - Does **not** reinstall removed Appx packages on revert.
 - Does **not** make any network calls.
-- Does **not** touch app-private storage or undocumented registry keys.
-- Does **not** hide the "AI actions" submenu from the image right-click
-  on Win11 25H2 build 26200. Microsoft did not wire the
-  `HideAIActionsMenu` policy on that build — there is no registry fix
-  until build 26220+. Once your OS updates to 26220+, the existing
-  `HideAIActionsMenu` entries will take effect.
+- Does **not** touch app-private storage. It uses Microsoft-documented
+  policy keys wherever they exist; the entries it ships that only third
+  parties document are labelled `Community` in the manifest
+  (`src/manifest/*.psd1`), and some of those are under review (see the
+  v2.14.0 notes).
+- Does **not** reliably hide the "AI actions" submenu from the image
+  right-click. The kit writes `HideAIActionsMenu`, but that value comes from
+  third-party sources and no source documents which builds honour it.
+  Microsoft's release notes describe a Settings-driven change instead: the
+  AI Actions section hides when every action is turned off under
+  **Settings > Apps > Actions**.
 - Does **not** uninstall the local Image Generation AI component on Copilot+
   PCs — that is Settings-only with no policy equivalent. See *Manual steps the
   kit cannot perform*.
@@ -652,9 +825,10 @@ between "hardens the machine" and "tampers with security settings".
   exported `.reg` backup and blocking the process as a result (see the
   v2.9.4 notes). Registry backups are per-value JSON snapshots now.
 
-Everything remaining targets documented Microsoft policy keys. The kit will
-not adopt evasion techniques to dodge AV detection; that would be exactly
-the wrong trade for a security tool.
+The kit uses Microsoft-documented policy keys wherever they exist; the
+entries it ships that only third parties document are labelled `Community`
+in the manifest. The kit will not adopt evasion techniques to dodge AV
+detection; that would be exactly the wrong trade for a security tool.
 
 **What to do:** if you trust the source, add a folder exclusion for the kit
 before running it.
@@ -821,7 +995,9 @@ Windows installs.
 |   |-- Snapshot-AIShellVerbs.ps1    read-only AI shell-verb diagnostic
 |   |-- Snapshot-CrashEvidence.ps1   read-only crash/BSOD evidence collector
 |   |-- manifest/            data: one .psd1 per category
+|   |-- retired/retired.psd1 Ids older versions applied that Revert can still undo
 |   `-- module/              engine + runner + UI + launcher picker + version
+|                            + shared manifest loader (OAi.Manifest.psm1)
 |-- tests/Manifest.Tests.ps1
 |-- docs/ARCHITECTURE.md
 |-- legacy/                  v2.2 .bat scripts, preserved for reference
@@ -854,8 +1030,22 @@ Before making changes, Apply:
 
 Revert:
 - Reads the newest `run.json`
-- Restores registry values from per-value JSON snapshots (legacy `.reg`
-  backups from v2.9.3 and earlier are still imported)
+- Restores registry values from per-value JSON snapshots. The value's
+  location always comes from the manifest; a snapshot for a different key,
+  or with a non-registry type, is refused. Backup files are looked up by
+  name inside the backup folder; paths recorded in `run.json` are not
+  followed
+- Reads legacy `.reg` backups (v2.9.3 and earlier) in memory for the one
+  policy value only, and writes that value itself. It never runs
+  `reg import`
+- Undoes retired policies (Ids an older version applied, listed in
+  `src/retired/retired.psd1`) using the location from that list, and
+  removes inert leftover values when no snapshot shows they existed before
+- Prints a `[warn] … skipped` line for any Id that is neither live nor
+  retired
+- Trusts the backup folder for *previous values*: anything that can write
+  `%USERPROFILE%\0AI_Backups` can change what Revert restores for a setting
+  the kit manages. Keep it somewhere only you control
 - Restores Defender preferences from the pre-run snapshot
 - Removes the ASR rules it added
 - **Resets** the process mitigations to Windows defaults (deletes the system

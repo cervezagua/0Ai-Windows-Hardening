@@ -1,5 +1,5 @@
 #
-# 0AI v2.3 - Revert.ps1
+# 0AI v2.14.0 - Revert.ps1
 #
 # Finds the newest backup directory under $env:USERPROFILE\0AI_Backups (or a
 # user-specified -BackupRoot), reads run.json, and calls Undo-PolicyAction for
@@ -66,11 +66,14 @@ if (-not $BackupDir) {
         Write-Host ('[!] No backup folder found at {0}' -f $BackupRoot) -ForegroundColor Red
         exit 1
     }
+    # Dry runs (-WhatIf) and rejected -Select lists leave a folder with only
+    # apply.log; skip those so they don't hide the last real run.
     $latest = Get-ChildItem -Path $BackupRoot -Directory -ErrorAction SilentlyContinue |
+              Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'run.json') -PathType Leaf } |
               Sort-Object LastWriteTime -Descending |
               Select-Object -First 1
     if (-not $latest) {
-        Write-Host '[!] No backup subfolders found.' -ForegroundColor Red
+        Write-Host '[!] No backup subfolders with a run.json found.' -ForegroundColor Red
         exit 1
     }
     $BackupDir = $latest.FullName
@@ -84,52 +87,79 @@ $logFile = Join-Path $BackupDir 'revert.log'
 ('[+] 0AI {0} Revert starting' -f (Get-OAiVersion)) | Out-File -Encoding UTF8 -FilePath $logFile -Append
 ('[+] BackupDir: ' + $BackupDir) | Out-File -Encoding UTF8 -FilePath $logFile -Append
 
-if (-not (Test-Path $runJson)) {
+if (-not (Test-Path -LiteralPath $runJson -PathType Leaf)) {
     Write-Host ('[!] run.json not found at {0}' -f $runJson) -ForegroundColor Red
     '[!] run.json missing' | Out-File -Encoding UTF8 -FilePath $logFile -Append
     exit 1
 }
 
+Import-Module (Join-Path $moduleDir 'OAi.Manifest.psm1') -Force
 Import-Module (Join-Path $moduleDir 'OAi.Engine.psm1') -Force
-
-# Import-PowerShellDataFile rejects top-level arrays. Parse via AST + SafeGetValue.
-function _Collect-Hashtables {
-    param($Val, [System.Collections.Generic.List[object]]$Acc)
-    if ($null -eq $Val) { return }
-    if ($Val -is [System.Collections.IDictionary]) { [void]$Acc.Add($Val); return }
-    if ($Val -is [System.Collections.IEnumerable] -and $Val -isnot [string]) {
-        foreach ($v in $Val) { _Collect-Hashtables -Val $v -Acc $Acc }
-        return
-    }
-}
-function _Load-PolicyManifest {
-    param([string]$Path)
-    $tokens = $null
-    $errs   = $null
-    $ast = [System.Management.Automation.Language.Parser]::ParseFile($Path, [ref]$tokens, [ref]$errs)
-    if ($errs -and @($errs).Count -gt 0) {
-        throw ('parse error in {0}: {1}' -f (Split-Path -Leaf $Path), @($errs)[0].Message)
-    }
-    $stmts = @($ast.EndBlock.Statements)
-    if ($stmts.Count -eq 0) { return ,@() }
-    $val = $stmts[0].PipelineElements[0].Expression.SafeGetValue()
-    $acc = New-Object System.Collections.Generic.List[object]
-    _Collect-Hashtables -Val $val -Acc $acc
-    return ,$acc.ToArray()
-}
 
 # Load manifest for Kind-specific undo info
 $manifestFiles = Get-ChildItem -Path $manifestDir -Filter '*.psd1' -ErrorAction Stop
 $policyMap = @{}
 foreach ($mf in $manifestFiles) {
     try {
-        $data = _Load-PolicyManifest -Path $mf.FullName
+        $data = Import-OAiManifestFile -Path $mf.FullName
         foreach ($p in $data) {
             if ($p -and $p.Id) { $policyMap[$p.Id] = $p }
         }
     } catch {
         ('[!] Failed to load manifest {0}: {1}' -f $mf.Name, $_.Exception.Message) | Out-File -Encoding UTF8 -FilePath $logFile -Append
     }
+}
+
+# Ids an older kit version applied that the manifest no longer has. The
+# retired list - never the backup file - says which value each one touched.
+$retiredMap = @{}
+try {
+    foreach ($rp in (Get-OAiRetiredPolicies)) {
+        if ($rp -and $rp.Id) { $retiredMap[[string]$rp.Id] = $rp }
+    }
+} catch {
+    ('[!] Failed to load retired policy list: ' + $_.Exception.Message) | Out-File -Encoding UTF8 -FilePath $logFile -Append
+}
+
+function _Undo-RetiredPolicy {
+    param($Retired, [string]$BackupDir, [string]$BackupFile)
+    $id   = [string]$Retired.Id
+    $hive = [string]$Retired.Hive
+    if ($Retired.Kind -ne 'Registry' -or @('HKLM','HKCU') -notcontains $hive -or -not $Retired.Key -or -not $Retired.Value) {
+        return [pscustomobject]@{ Id = $id; Status = 'warn'; Message = 'retired entry is malformed - skipped' }
+    }
+    $pol = @{ Id = $id; Kind = 'Registry'; Hive = $hive; Key = [string]$Retired.Key; Value = [string]$Retired.Value }
+    $resolved  = Resolve-OAiBackupFile -BackupDir $BackupDir -Recorded $BackupFile
+    $hasBackup = [bool]$resolved
+    $isJson    = $hasBackup -and ([System.IO.Path]::GetExtension($resolved) -eq '.json')
+    $prefix    = 'retired in {0}: ' -f $Retired.RetiredIn
+
+    if ($Retired.Cleanup -ne $true -and -not $hasBackup) {
+        return [pscustomobject]@{ Id = $id; Status = 'skipped'; Message = ($prefix + ('no snapshot; {0}\{1}!{2} left as-is (still managed by {3})' -f $hive, $pol.Key, $pol.Value, (@($Retired.ReplacedBy) -join ', '))) }
+    }
+
+    $u = Undo-PolicyAction -Policy $pol -BackupDir $BackupDir -BackupFile $BackupFile
+    $status = $u.Status
+    $msg    = $prefix + $u.Message
+
+    if ($Retired.Cleanup -eq $true -and -not $isJson) {
+        $path = Join-Path ($hive + ':') $pol.Key
+        $exists = $false
+        try { $null = Get-ItemProperty -LiteralPath $path -Name $pol.Value -ErrorAction Stop; $exists = $true } catch {}
+        if ($exists) {
+            try {
+                Remove-ItemProperty -LiteralPath $path -Name $pol.Value -Force -ErrorAction Stop
+                $msg += ('; removed inert leftover {0}\{1}!{2}' -f $hive, $pol.Key, $pol.Value)
+            } catch {
+                $status = 'warn'
+                $msg += ('; could not remove leftover {0}\{1}!{2}: {3}' -f $hive, $pol.Key, $pol.Value, $_.Exception.Message)
+            }
+        }
+        # With no backup at all, deleting an inert value is the intended
+        # outcome, not a degraded one.
+        if (-not $hasBackup -and $status -eq 'warn' -and -not $exists) { $status = 'ok' }
+    }
+    return [pscustomobject]@{ Id = $id; Status = $status; Message = $msg }
 }
 
 try {
@@ -139,20 +169,29 @@ try {
     ('[!] Restore point unavailable: ' + $_.Exception.Message) | Out-File -Encoding UTF8 -FilePath $logFile -Append
 }
 
-$run = Get-Content -Path $runJson -Raw | ConvertFrom-Json
+$run = Get-Content -LiteralPath $runJson -Raw | ConvertFrom-Json
 $results = @($run.Results)
 
 $counters = @{ ok = 0; warn = 0; error = 0; skipped = 0 }
 foreach ($r in $results) {
-    $pol = $policyMap[$r.Id]
-    if (-not $pol) {
-        ('[!] policy not in current manifest: {0}' -f $r.Id) | Out-File -Encoding UTF8 -FilePath $logFile -Append
+    $rid = [string]$r.Id
+    $bf = ''
+    if ($r.PSObject.Properties.Name -contains 'BackupFile') { $bf = [string]$r.BackupFile }
+    if ($rid -and $policyMap.ContainsKey($rid)) {
+        $u = Undo-PolicyAction -Policy $policyMap[$rid] -BackupDir $BackupDir -BackupFile $bf
+    } elseif ($rid -and $retiredMap.ContainsKey($rid)) {
+        try {
+            $u = _Undo-RetiredPolicy -Retired $retiredMap[$rid] -BackupDir $BackupDir -BackupFile $bf
+        } catch {
+            $u = [pscustomobject]@{ Id = $rid; Status = 'error'; Message = ('retired-policy revert failed: ' + $_.Exception.Message) }
+        }
+    } else {
+        $m = ('[warn] {0}: not in current manifest and not a known retired policy - skipped' -f $rid)
+        Write-Host $m -ForegroundColor Yellow
+        $m | Out-File -Encoding UTF8 -FilePath $logFile -Append
         $counters.warn++
         continue
     }
-    $bf = ''
-    if ($r.PSObject.Properties.Name -contains 'BackupFile') { $bf = [string]$r.BackupFile }
-    $u = Undo-PolicyAction -Policy $pol -BackupDir $BackupDir -BackupFile $bf
     ('[{0,-7}] {1}  {2}' -f $u.Status, $u.Id, $u.Message) | Out-File -Encoding UTF8 -FilePath $logFile -Append
     Write-Host ('[{0,-7}] {1}  {2}' -f $u.Status, $u.Id, $u.Message)
     switch ($u.Status) {

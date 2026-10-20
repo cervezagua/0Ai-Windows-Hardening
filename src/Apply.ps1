@@ -1,5 +1,5 @@
 #
-# 0AI v2.13.0 - Apply.ps1
+# 0AI v2.14.0 - Apply.ps1
 #
 # Entry point for applying privacy / AI-disablement / hardening policies.
 #
@@ -66,6 +66,7 @@ $manifestDir = Join-Path $thisDir 'manifest'
 # Version module first: the log header and restore-point name below call
 # Get-OAiVersion, so it must be loaded before any other work.
 Import-Module (Join-Path $moduleDir 'OAi.Version.psm1') -Force
+Import-Module (Join-Path $moduleDir 'OAi.Manifest.psm1') -Force
 
 if (-not $BackupRoot) {
     $BackupRoot = Join-Path $env:USERPROFILE '0AI_Backups'
@@ -87,14 +88,6 @@ $VerifyTxt = Join-Path $BackupDir 'verification.txt'
 
 Write-Host ('[+] Backup dir: {0}' -f $BackupDir)
 
-# ---- Restore point (best-effort) ----
-try {
-    Checkpoint-Computer -Description ('0AI_Pre_' + (Get-OAiVersion)) -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop | Out-Null
-    '[+] Restore point created.' | Out-File -Encoding UTF8 -FilePath $LogFile -Append
-} catch {
-    ('[!] Restore point unavailable: ' + $_.Exception.Message) | Out-File -Encoding UTF8 -FilePath $LogFile -Append
-}
-
 # ---- Load modules ----
 Import-Module (Join-Path $moduleDir 'OAi.Engine.psm1')    -Force
 Import-Module (Join-Path $moduleDir 'OAi.Runner.psm1')    -Force
@@ -102,42 +95,12 @@ Import-Module (Join-Path $moduleDir 'OAi.UI.Console.psm1') -Force
 Import-Module (Join-Path $moduleDir 'OAi.UI.Plan.psm1')    -Force
 Import-Module (Join-Path $moduleDir 'OAi.UI.Launcher.psm1') -Force
 
-# ---- Manifest loader ----
-# Note: Import-PowerShellDataFile rejects top-level arrays. Our manifests are
-# @(...) at the top level, so we parse via AST and call SafeGetValue(), which
-# is the PS-supported "constrained literal eval" path (PS 5.1+).
-function _Collect-Hashtables {
-    param($Val, [System.Collections.Generic.List[object]]$Acc)
-    if ($null -eq $Val) { return }
-    if ($Val -is [System.Collections.IDictionary]) { [void]$Acc.Add($Val); return }
-    if ($Val -is [System.Collections.IEnumerable] -and $Val -isnot [string]) {
-        foreach ($v in $Val) { _Collect-Hashtables -Val $v -Acc $Acc }
-        return
-    }
-    # scalar: ignore
-}
-function _Load-PolicyManifest {
-    param([string]$Path)
-    $tokens = $null
-    $errs   = $null
-    $ast = [System.Management.Automation.Language.Parser]::ParseFile($Path, [ref]$tokens, [ref]$errs)
-    if ($errs -and @($errs).Count -gt 0) {
-        throw ('parse error in {0}: {1}' -f (Split-Path -Leaf $Path), @($errs)[0].Message)
-    }
-    $stmts = @($ast.EndBlock.Statements)
-    if ($stmts.Count -eq 0) { return ,@() }
-    $val = $stmts[0].PipelineElements[0].Expression.SafeGetValue()
-    $acc = New-Object System.Collections.Generic.List[object]
-    _Collect-Hashtables -Val $val -Acc $acc
-    return ,$acc.ToArray()
-}
-
 # ---- Load manifest ----
 $manifestFiles = Get-ChildItem -Path $manifestDir -Filter '*.psd1' -ErrorAction Stop
 $allPolicies = New-Object System.Collections.Generic.List[object]
 foreach ($mf in $manifestFiles) {
     try {
-        $data = _Load-PolicyManifest -Path $mf.FullName
+        $data = Import-OAiManifestFile -Path $mf.FullName
         foreach ($p in $data) {
             if ($null -ne $p) { $allPolicies.Add($p) }
         }
@@ -175,6 +138,41 @@ if ($PSBoundParameters.Count -eq 0) {
     }
 }
 
+# ---- Elevated as a different account? ----
+# Printed after the launcher, which clears the screen.
+try {
+    $interactiveUser = Get-OAiInteractiveUser
+    $elevatedUser    = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    if ($interactiveUser -and -not [string]::Equals($interactiveUser, $elevatedUser, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $um = ('[!] Running as {0}, but {1} is signed in at this desktop. Per-user (HKCU) policies will land in {0}''s profile, not {1}''s. To cover {1}, run the kit while signed in as {1}, using an admin account of their own.' -f $elevatedUser, $interactiveUser)
+        Write-Host $um -ForegroundColor Yellow
+        $um | Out-File -Encoding UTF8 -FilePath $LogFile -Append
+    }
+} catch {}
+
+# ---- Validate -Select ----
+# 'powershell -File' (how 0AI_Apply.cmd starts us) passes "-Select A,B" as
+# the single string 'A,B', so split on commas here.
+$Select = @($Select | ForEach-Object { [string]$_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+if ($Select.Count -gt 0) {
+    $retired = @()
+    try {
+        $retired = Get-OAiRetiredPolicies
+    } catch {
+        ('[!] Failed to load retired policy list: ' + $_.Exception.Message) | Out-File -Encoding UTF8 -FilePath $LogFile -Append
+    }
+    $unknown = @(Test-OAiSelectIds -Select $Select -LivePolicies $allPolicies.ToArray() -Retired $retired)
+    if ($unknown.Count -gt 0) {
+        foreach ($u in $unknown) {
+            Write-Host ('[!] ' + $u.Message) -ForegroundColor Red
+            ('[!] -Select: ' + $u.Message) | Out-File -Encoding UTF8 -FilePath $LogFile -Append
+        }
+        Write-Host '[!] Nothing applied. Fix the -Select list and run again.' -ForegroundColor Red
+        '[!] Aborted: unknown -Select Id(s); nothing applied.' | Out-File -Encoding UTF8 -FilePath $LogFile -Append
+        exit 2
+    }
+}
+
 # ---- Build plan ----
 $plan = New-Plan -Manifest $allPolicies.ToArray() -Categories $Categories -Selected $Select
 
@@ -188,6 +186,17 @@ if ($WhatIf) {
     Write-Host ''
     Write-Host '[i] -WhatIf specified: no changes made.'
     exit 0
+}
+
+# ---- Restore point (best-effort) ----
+# Created only once the run is certain to change something: after the
+# -Select check and the -WhatIf exit, so a dry run or a rejected Id list
+# does not leave a restore point behind.
+try {
+    Checkpoint-Computer -Description ('0AI_Pre_' + (Get-OAiVersion)) -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop | Out-Null
+    '[+] Restore point created.' | Out-File -Encoding UTF8 -FilePath $LogFile -Append
+} catch {
+    ('[!] Restore point unavailable: ' + $_.Exception.Message) | Out-File -Encoding UTF8 -FilePath $LogFile -Append
 }
 
 # ---- Execute ----
