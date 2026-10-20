@@ -1,7 +1,7 @@
 # 0AI - Windows Hardening Kit
 
 ### Windows 11 Privacy, AI Disablement & Security Hardening
-**Version:** `v2.14.0`
+**Version:** `v2.14.1`
 
 **Supported baselines:** Windows 11 25H2 (OS Build **26200.9711+**) and 26H2
 (OS Build **26300.9711+**), through the **October 13 2026 Patch Tuesday
@@ -97,6 +97,30 @@ the manifest. No changes.
 reinstalled by `Revert.ps1`. Opt in only if you're comfortable with that.
 
 ---
+
+## What's new in v2.14.1
+
+**Seven AI entries with no working source are retired.** v2.14.0 listed them
+"under review"; on a 25H2 test PC (Edge 155) `edge://policy` reports both
+Edge values as **Unknown policy**, and none of the seven has a Microsoft
+source.
+
+| Retired Id | Why | Still covered by |
+|---|---|---|
+| `AI.Edge.DiscoverEnabled` | Edge: "Unknown policy" | `AI.Edge.HubsSidebarEnabled` |
+| `AI.Edge.EdgeCopilotEnabled` | Edge for Windows: "Unknown policy" (Android / iOS only) | `AI.Edge.HubsSidebarEnabled` |
+| `AI.SmartActions.SmartActionsState` | no source found | — |
+| `AI.Narrator.ImageDescriptionsEnabled` | no source found | — |
+| `AI.Search.DisableSearchBoxSuggestions.Search` | documented under `…\Explorer` only | `AI.Search.DisableSearchBoxSuggestions.Explorer` |
+| `AI.Notepad.DisableAIFeatures.Notepad` | no source uses `Microsoft\Notepad` | `AI.Notepad.DisableAIFeatures.WindowsNotepad` |
+| `AI.Recall.PurgeDataFolder` | deleted an undocumented folder | `AI.WindowsAI.AllowRecallEnablement` (documented snapshot deletion) |
+
+- All seven are in `src/retired/retired.psd1`. Revert of an older backup
+  removes the six inert registry values; the folder purge was never
+  reversible and is only reported. `-Select` with one of these Ids explains
+  the retirement and names the replacement.
+- `Snapshot-AIShellVerbs.ps1` lists any of the six values still present.
+- AI manifest labels are now 17 `Documented`, 4 `BestEffort`, 10 `Community`.
 
 ## What's new in v2.14.0
 
@@ -219,7 +243,7 @@ every action is turned off under Settings > Apps > Actions).
 ### Under review, kept for now
 
 These entries have no working source and may do nothing. They stay in this
-release pending the maintainer's decision:
+release pending the maintainer's decision (all seven retired in v2.14.1):
 
 - `AI.Edge.DiscoverEnabled`: not an Edge policy name; the real
   `EdgeDiscoverEnabled` has been obsolete since Edge 105.

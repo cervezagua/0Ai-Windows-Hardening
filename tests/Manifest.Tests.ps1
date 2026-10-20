@@ -274,11 +274,16 @@ Describe '0AI manifest schema' {
                         if (-not ($rid -is [string] -and $rid.Length -gt 0)) { $problems += "ReplacedBy item '$rid'" }
                     }
                 }
-                if ($e.Kind -ne 'Registry') { $problems += "Kind='$($e.Kind)'" }
-                if ($ValidHives -notcontains $e.Hive) { $problems += "Hive='$($e.Hive)'" }
-                if (-not ($e.Key -is [string] -and $e.Key.Length -gt 0)) { $problems += 'Key empty' }
-                if (-not ($e.Value -is [string] -and $e.Value.Length -gt 0)) { $problems += 'Value empty' }
-                if (-not ($e.Cleanup -is [bool])) { $problems += "Cleanup='$($e.Cleanup)' is not [bool]" }
+                if ($e.Kind -eq 'FolderPurge') {
+                    if (-not ($e.Path -is [string] -and $e.Path.Length -gt 0)) { $problems += 'Path empty' }
+                } elseif ($e.Kind -eq 'Registry') {
+                    if ($ValidHives -notcontains $e.Hive) { $problems += "Hive='$($e.Hive)'" }
+                    if (-not ($e.Key -is [string] -and $e.Key.Length -gt 0)) { $problems += 'Key empty' }
+                    if (-not ($e.Value -is [string] -and $e.Value.Length -gt 0)) { $problems += 'Value empty' }
+                    if (-not ($e.Cleanup -is [bool])) { $problems += "Cleanup='$($e.Cleanup)' is not [bool]" }
+                } else {
+                    $problems += "Kind='$($e.Kind)'"
+                }
                 if ($problems.Count -gt 0) { $bad.Add(('{0}: {1}' -f $id, ($problems -join ', '))) }
             }
             $bad.Count | Should -Be 0 -Because "offenders: $($bad -join '; ')"

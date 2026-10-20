@@ -1,5 +1,5 @@
 #
-# 0AI v2.14.0 - Revert.ps1
+# 0AI v2.14.1 - Revert.ps1
 #
 # Finds the newest backup directory under $env:USERPROFILE\0AI_Backups (or a
 # user-specified -BackupRoot), reads run.json, and calls Undo-PolicyAction for
@@ -125,6 +125,9 @@ function _Undo-RetiredPolicy {
     param($Retired, [string]$BackupDir, [string]$BackupFile)
     $id   = [string]$Retired.Id
     $hive = [string]$Retired.Hive
+    if ($Retired.Kind -eq 'FolderPurge') {
+        return [pscustomobject]@{ Id = $id; Status = 'skipped'; Message = ('retired in {0}: FolderPurge is not reversible' -f $Retired.RetiredIn) }
+    }
     if ($Retired.Kind -ne 'Registry' -or @('HKLM','HKCU') -notcontains $hive -or -not $Retired.Key -or -not $Retired.Value) {
         return [pscustomobject]@{ Id = $id; Status = 'warn'; Message = 'retired entry is malformed - skipped' }
     }
