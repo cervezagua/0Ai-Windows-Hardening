@@ -1,7 +1,7 @@
 # 0AI - Windows Hardening Kit
 
 ### Windows 11 Privacy, AI Disablement & Security Hardening
-**Version:** `v2.14.4`
+**Version:** `v2.14.5`
 
 **Supported baselines:** Windows 11 25H2 (OS Build **26200.9711+**) and 26H2
 (OS Build **26300.9711+**), through the **October 13 2026 Patch Tuesday
@@ -98,6 +98,31 @@ the manifest. No changes.
 reinstalled by `Revert.ps1`. Opt in only if you're comfortable with that.
 
 ---
+
+## What's new in v2.14.5
+
+**Revert finds "before" values in older backups.** Apply skips a policy
+that is already in place and takes no snapshot of it. After a second Apply,
+the newest backup therefore had no "before" value for most policies:
+Revert deleted those registry values, even Windows' own settings such as
+`fDenyTSConnections`, and left disabled services disabled.
+
+Now, for each Registry or Service policy without a snapshot, Revert walks
+older backups (newest first) and uses the newest one that recorded a
+snapshot for it, which holds the value from before the kit last changed it.
+- The search stops at an older run whose own Revert already restored that
+  policy (an `ok` line in its `revert.log`), because that value was already
+  put back then.
+- Backups from v2.14.1 or earlier are not protected, so Revert lists them and
+  asks for `YES` once (or `-AllowUnlockedBackup`). It then reads them only
+  from admin-only copies. If you say no, it behaves as before.
+- Lines restored this way say `from older backup <timestamp>:`.
+- Backups are now ordered by their timestamp name, not by when the folder
+  was last written; a Revert writes into the folder it reverts.
+- Working copies of untrusted backups record where they came from
+  (`source.txt`), so later Reverts know what was already reverted.
+- New module `src/module/OAi.BackupHistory.psm1`, with tests in
+  `tests/BackupHistory.Tests.ps1` (55 tests in total).
 
 ## What's new in v2.14.4
 
@@ -1086,7 +1111,8 @@ Windows installs.
 |   `-- module/              engine + runner + UI + launcher picker + version
 |                            + shared manifest loader (OAi.Manifest.psm1)
 |                            + admin-only backup folders (OAi.BackupAcl.psm1)
-|-- tests/Manifest.Tests.ps1, BackupAcl.Tests.ps1, Modules.Tests.ps1
+|                            + snapshots from older backups (OAi.BackupHistory.psm1)
+|-- tests/Manifest.Tests.ps1, BackupAcl.Tests.ps1, BackupHistory.Tests.ps1, Modules.Tests.ps1
 |-- docs/ARCHITECTURE.md
 |-- legacy/                  v2.2 .bat scripts, preserved for reference
 `-- README.md                (this file)
@@ -1122,6 +1148,8 @@ Revert:
   without admin rights could have changed (v2.14.1 or earlier) needs a typed
   `YES` or `-AllowUnlockedBackup`, and is then copied to an admin-only folder
   first; one containing a link is refused
+- For a policy the newest run skipped (already in place, so no snapshot),
+  restores the value from the newest older backup that recorded one
 - Restores registry values from per-value JSON snapshots. The value's
   location always comes from the manifest; a snapshot for a different key,
   or with a non-registry type, is refused. Backup files are looked up by

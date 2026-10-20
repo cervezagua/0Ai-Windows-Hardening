@@ -1,5 +1,5 @@
 #
-# 0AI v2.14.4 - Revert.ps1
+# 0AI v2.14.5 - Revert.ps1
 #
 # Finds the newest trusted backup under $env:ProgramData\0AI_Backups\<SID>
 # (then the pre-v2.14.2 $env:USERPROFILE\0AI_Backups, or a user-specified
@@ -64,22 +64,67 @@ Import-Module (Join-Path $moduleDir 'OAi.Version.psm1') -Force
 Import-Module (Join-Path $moduleDir 'OAi.BackupAcl.psm1') -Force
 $manifestDir = Join-Path $thisDir 'manifest'
 
-# ---- Pick the backup ----
-# Default: the admin-only home (%ProgramData%\0AI_Backups\<SID>, v2.14.2+),
-# then the old per-profile folder (v2.14.1 and earlier). Dry runs (-WhatIf)
-# and rejected -Select lists leave folders with no run.json; those are
-# skipped, as are copies Revert itself made of untrusted backups.
-if (-not $BackupDir) {
-    $roots = @()
-    if ($BackupRoot) { $roots = @($BackupRoot) }
-    else { $roots = @((Get-OAiBackupHome), (Join-Path $env:USERPROFILE '0AI_Backups')) }
-    $candidates = @(foreach ($root in $roots) {
+Import-Module (Join-Path $moduleDir 'OAi.BackupHistory.psm1') -Force
+
+# ---- Helpers ----
+function _Get-BackupFolders {
+    # Backups with a run.json, newest first. Folder names are the Apply
+    # timestamp (yyyy-MM-dd_HHmmss), which keeps their order even after a
+    # Revert writes into a folder. Dry runs (-WhatIf) and rejected -Select
+    # lists leave no run.json; imported-* are Revert's own working copies.
+    param([string[]]$Roots)
+    $all = @(foreach ($root in $Roots) {
             if (Test-Path -LiteralPath $root -PathType Container) {
                 Get-ChildItem -LiteralPath $root -Directory -Force -ErrorAction SilentlyContinue |
                     Where-Object { $_.Name -notlike 'imported-*' -and (Test-Path -LiteralPath (Join-Path $_.FullName 'run.json') -PathType Leaf) }
             }
-        }) | Sort-Object LastWriteTime -Descending
-    $candidates = @($candidates)
+        })
+    return @($all | Sort-Object Name -Descending)
+}
+
+function _Confirm-Untrusted {
+    # One YES (or -AllowUnlockedBackup) before Revert uses data from a backup
+    # that programs without admin rights could have changed.
+    if ($AllowUnlockedBackup) { return $true }
+    $interactive = $false
+    try { $interactive = [Environment]::UserInteractive -and -not [Console]::IsInputRedirected } catch {}
+    if (-not $interactive) {
+        Write-Host '    Not interactive: pass -AllowUnlockedBackup to use it.'
+        return $false
+    }
+    $ans = Read-Host '    Type YES to use it anyway'
+    return (([string]$ans).Trim() -ceq 'YES')
+}
+
+function _Read-SmallText {
+    param([string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
+    if ((Get-Item -LiteralPath $Path -Force).Length -gt 32MB) { return $null }
+    return [System.IO.File]::ReadAllText($Path)
+}
+
+function _Stage-Copy {
+    # Admin-only working copy of an untrusted backup; source.txt records
+    # where it came from, so a later Revert knows which run it reverted.
+    param([string]$Source)
+    $base = 'imported-' + (Get-Date -Format 'yyyy-MM-dd_HHmmss')
+    $dest = Join-Path (Get-OAiBackupHome -Create) $base
+    $n = 1
+    while (Test-Path -LiteralPath $dest) { $n++; $dest = Join-Path (Get-OAiBackupHome) ('{0}-{1}' -f $base, $n) }
+    Copy-OAiBackupToLocked -Source $Source -Dest $dest
+    [System.IO.File]::WriteAllText((Join-Path $dest 'source.txt'), $Source)
+    return $dest
+}
+
+$roots = @()
+if ($BackupRoot) { $roots = @($BackupRoot) }
+else { $roots = @((Get-OAiBackupHome), (Join-Path $env:USERPROFILE '0AI_Backups')) }
+
+# ---- Pick the backup ----
+# Default: the admin-only home (%ProgramData%\0AI_Backups\<SID>, v2.14.2+),
+# then the old per-profile folder (v2.14.1 and earlier).
+if (-not $BackupDir) {
+    $candidates = _Get-BackupFolders -Roots $roots
     if ($candidates.Count -eq 0) {
         Write-Host ('[!] No backup with a run.json found in: {0}' -f ($roots -join ', ')) -ForegroundColor Red
         exit 1
@@ -113,6 +158,12 @@ if ($lock.Missing) {
     Write-Host ('[!] Backup folder not found: {0}' -f $BackupDir) -ForegroundColor Red
     exit 1
 }
+$BackupDir    = (Get-Item -LiteralPath $BackupDir -Force).FullName
+$origDir      = $BackupDir
+$selectedName = Split-Path -Leaf $BackupDir
+if (Test-Path -LiteralPath (Join-Path $origDir 'revert.log') -PathType Leaf) {
+    Write-Host '[i] This backup has been reverted before; reverting it again restores the same values.'
+}
 if (-not $lock.Ok) {
     if ($lock.IsLink) {
         Write-Host ('[!] Not using {0}: {1}.' -f $BackupDir, $lock.Reason) -ForegroundColor Red
@@ -121,34 +172,21 @@ if (-not $lock.Ok) {
     Write-Host ('[!] This backup is not protected against changes by programs without admin rights ({0}).' -f $lock.Reason) -ForegroundColor Yellow
     Write-Host '    Backups made by 0AI v2.14.1 or earlier are like this, as is any backup changed since.'
     Write-Host '    If a program altered it, Revert would restore the altered values. Use it only if you trust this PC.'
-    $proceed = [bool]$AllowUnlockedBackup
-    if (-not $proceed) {
-        $interactive = $false
-        try { $interactive = [Environment]::UserInteractive -and -not [Console]::IsInputRedirected } catch {}
-        if ($interactive) {
-            $ans = Read-Host '    Type YES to use it anyway'
-            $proceed = ([string]$ans).Trim() -ceq 'YES'
-        } else {
-            Write-Host '    Not interactive: pass -AllowUnlockedBackup to use it.'
-        }
-    }
-    if (-not $proceed) {
+    if (-not (_Confirm-Untrusted)) {
         Write-Host '[i] Revert cancelled; nothing changed.'
         exit 1
     }
     # Work from an admin-only copy, so nothing can swap the files while
     # Revert reads them.
-    $orig = $BackupDir
     try {
-        $staged = Join-Path (Get-OAiBackupHome -Create) ('imported-' + (Get-Date -Format 'yyyy-MM-dd_HHmmss'))
-        Copy-OAiBackupToLocked -Source $orig -Dest $staged
+        $staged = _Stage-Copy -Source $origDir
     } catch {
         Write-Host ('[!] Could not copy the backup to an admin-only folder: {0}' -f $_.Exception.Message) -ForegroundColor Red
         Write-Host '[i] Revert cancelled; nothing changed.'
         exit 1
     }
     $BackupDir = $staged
-    $lockNote = ('[!] Untrusted backup {0} used after confirmation ({1}); working from admin-only copy {2}' -f $orig, $lock.Reason, $staged)
+    $lockNote = ('[!] Untrusted backup {0} used after confirmation ({1}); working from admin-only copy {2}' -f $origDir, $lock.Reason, $staged)
     Write-Host ('[i] Working from an admin-only copy: {0}' -f $staged)
 }
 
@@ -237,6 +275,98 @@ function _Undo-RetiredPolicy {
     return [pscustomobject]@{ Id = $id; Status = $status; Message = $msg }
 }
 
+$run = Get-Content -LiteralPath $runJson -Raw | ConvertFrom-Json
+$results = @($run.Results)
+
+# ---- Snapshots from older backups ----
+# A policy that was already in place when this backup's Apply ran was
+# skipped without a snapshot. Its value from before the kit first changed
+# it is in an older backup; find it there rather than deleting the value
+# (or leaving a service as it is).
+$fallback = @{}
+$needIds = @(foreach ($r in $results) {
+        $rid = [string]$r.Id
+        if (-not $rid -or -not $policyMap.ContainsKey($rid)) { continue }
+        if (@('Registry', 'Service') -notcontains $policyMap[$rid].Kind) { continue }
+        $bf = ''
+        if ($r.PSObject.Properties.Name -contains 'BackupFile') { $bf = [string]$r.BackupFile }
+        if (-not (Resolve-OAiBackupFile -BackupDir $BackupDir -Recorded $bf)) { $rid }
+    })
+if ($needIds.Count -gt 0) {
+    # Reverts done from a working copy are recorded in the copy (source.txt
+    # names the original folder).
+    $copyReverts = @{}
+    $homeDir = Get-OAiBackupHome
+    if (Test-Path -LiteralPath $homeDir -PathType Container) {
+        foreach ($d in @(Get-ChildItem -LiteralPath $homeDir -Directory -Force -Filter 'imported-*' -ErrorAction SilentlyContinue)) {
+            $src = _Read-SmallText (Join-Path $d.FullName 'source.txt')
+            $log = _Read-SmallText (Join-Path $d.FullName 'revert.log')
+            if ($src -and $log) {
+                $key = $src.Trim().ToLowerInvariant()
+                if (-not $copyReverts.ContainsKey($key)) { $copyReverts[$key] = @() }
+                $copyReverts[$key] = @($copyReverts[$key]) + @(Get-OAiRevertedIds -LogText $log)
+            }
+        }
+    }
+    function _Load-Older {
+        param([string]$Name, [string]$Dir, [string]$Source, [bool]$Trusted)
+        $txt = _Read-SmallText (Join-Path $Dir 'run.json')
+        if (-not $txt) { return $null }
+        try { $res = @((ConvertFrom-Json -InputObject $txt).Results) } catch { return $null }
+        $reverted = @(Get-OAiRevertedIds -LogText (_Read-SmallText (Join-Path $Source 'revert.log')))
+        $ck = $Source.ToLowerInvariant()
+        if ($copyReverts.ContainsKey($ck)) { $reverted += @($copyReverts[$ck]) }
+        return [pscustomobject]@{
+            Name        = $Name
+            Dir         = $Dir
+            Source      = $Source
+            Trusted     = $Trusted
+            Results     = $res
+            Files       = @(Get-ChildItem -LiteralPath $Dir -Force -File -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
+            RevertedIds = $reverted
+        }
+    }
+    $older = @(foreach ($d in (_Get-BackupFolders -Roots $roots)) {
+            if ([string]::CompareOrdinal($d.Name, $selectedName) -ge 0) { continue }
+            if ($d.FullName -eq $origDir) { continue }
+            $chk = Test-OAiBackupDirLocked -Path $d.FullName
+            if ($chk.IsLink -or $chk.Missing) { continue }
+            $o = _Load-Older -Name $d.Name -Dir $d.FullName -Source $d.FullName -Trusted $chk.Ok
+            if ($o) { $o }
+        })
+    $plan = Select-OAiFallbackSnapshots -Ids $needIds -Older $older
+    $untrusted = @($older | Where-Object { -not $_.Trusted -and @($plan.Values | ForEach-Object { $_.Dir }) -contains $_.Dir })
+    if ($untrusted.Count -gt 0) {
+        Write-Host ('[!] {0} setting(s) have no snapshot in this backup. Their earlier values are in older' -f $plan.Count) -ForegroundColor Yellow
+        Write-Host '    backups that programs without admin rights could have changed (v2.14.1 or earlier):'
+        foreach ($u in $untrusted) { Write-Host ('      {0}' -f $u.Source) }
+        Write-Host '    Without them, those settings are deleted (registry) or left as they are (services).'
+        $useOld = _Confirm-Untrusted
+        $older = @(foreach ($o in $older) {
+                if ($o.Trusted) { $o; continue }
+                if (-not $useOld -or @($untrusted | ForEach-Object { $_.Dir }) -notcontains $o.Dir) {
+                    # Not read from; keep it in the list only for its reverts.
+                    [pscustomobject]@{ Name = $o.Name; Dir = $o.Dir; Source = $o.Source; Trusted = $false; Results = @(); Files = @(); RevertedIds = $o.RevertedIds }
+                    continue
+                }
+                try {
+                    $copy = _Stage-Copy -Source $o.Source
+                    $c = _Load-Older -Name $o.Name -Dir $copy -Source $o.Source -Trusted $true
+                    if ($c) { $c }
+                } catch {
+                    ('[!] Could not copy older backup {0}: {1}' -f $o.Source, $_.Exception.Message) | Out-File -Encoding UTF8 -FilePath $logFile -Append
+                }
+            })
+        $plan = Select-OAiFallbackSnapshots -Ids $needIds -Older $older
+    }
+    $fallback = $plan
+    if ($fallback.Count -gt 0) {
+        $m = ('[+] {0} setting(s) restored from older backups (no snapshot in this one).' -f $fallback.Count)
+        Write-Host $m
+        $m | Out-File -Encoding UTF8 -FilePath $logFile -Append
+    }
+}
+
 try {
     Checkpoint-Computer -Description ('0AI_Revert_' + (Get-OAiVersion)) -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop | Out-Null
     '[+] Restore point (pre-revert) created.' | Out-File -Encoding UTF8 -FilePath $logFile -Append
@@ -244,15 +374,16 @@ try {
     ('[!] Restore point unavailable: ' + $_.Exception.Message) | Out-File -Encoding UTF8 -FilePath $logFile -Append
 }
 
-$run = Get-Content -LiteralPath $runJson -Raw | ConvertFrom-Json
-$results = @($run.Results)
-
 $counters = @{ ok = 0; warn = 0; error = 0; skipped = 0 }
 foreach ($r in $results) {
     $rid = [string]$r.Id
     $bf = ''
     if ($r.PSObject.Properties.Name -contains 'BackupFile') { $bf = [string]$r.BackupFile }
-    if ($rid -and $policyMap.ContainsKey($rid)) {
+    if ($rid -and $fallback.ContainsKey($rid) -and $policyMap.ContainsKey($rid)) {
+        $fb = $fallback[$rid]
+        $u = Undo-PolicyAction -Policy $policyMap[$rid] -BackupDir $fb.Dir -BackupFile $fb.BackupFile
+        $u = [pscustomobject]@{ Id = $u.Id; Status = $u.Status; Message = ('from older backup {0}: {1}' -f $fb.Name, $u.Message) }
+    } elseif ($rid -and $policyMap.ContainsKey($rid)) {
         $u = Undo-PolicyAction -Policy $policyMap[$rid] -BackupDir $BackupDir -BackupFile $bf
     } elseif ($rid -and $retiredMap.ContainsKey($rid)) {
         try {
