@@ -113,6 +113,7 @@ guarded by `$PSVersionTable.PSVersion.Major -ge 7` checks. None are required.
 |   +-- module/
 |       +-- OAi.Manifest.psm1     shared manifest + retired-list loader, -Select check
 |       +-- OAi.BackupAcl.psm1    lock backup folders admin-only; Revert's check
+|       +-- OAi.BackupHistory.psm1 pick snapshots from older backups for skipped policies
 |       +-- OAi.Engine.psm1       primitives (Invoke/Test/Backup/Undo)
 |       +-- OAi.Runner.psm1       orchestration + parallelism
 |       +-- OAi.UI.Console.psm1   live progress display
@@ -223,10 +224,15 @@ serialized to `run.json`.
    Otherwise (v2.14.1-or-earlier backups) it asks for a typed `YES` or
    `-AllowUnlockedBackup` and works from an admin-only copy; a backup that is
    or contains a junction or symlink is refused. Then reads `run.json`.
-3. For each result, looks up the matching policy record in the current
+3. For each Registry/Service result with no snapshot in this backup (Apply
+   skipped it because it was already in place), finds the newest older
+   backup that recorded one, stopping at an older run whose own Revert
+   already restored that Id. Untrusted older backups need one `YES` and are
+   read from admin-only copies.
+4. For each result, looks up the matching policy record in the current
    manifest, or else in `src/retired/retired.psd1`. An Id in neither is
    skipped with a `[warn]` on the console and in `revert.log`.
-4. Calls `Undo-PolicyAction`, which dispatches by `Kind`:
+5. Calls `Undo-PolicyAction`, which dispatches by `Kind`:
    - Registry → restore the one value from its per-value JSON snapshot
      (value did not exist before → delete it). Legacy `.reg` backups
      (v2.9.3 and earlier) are read in memory for that one value only;
