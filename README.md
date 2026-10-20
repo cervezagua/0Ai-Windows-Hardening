@@ -1,7 +1,7 @@
 # 0AI - Windows Hardening Kit
 
 ### Windows 11 Privacy, AI Disablement & Security Hardening
-**Version:** `v2.14.2`
+**Version:** `v2.14.3`
 
 **Supported baselines:** Windows 11 25H2 (OS Build **26200.9711+**) and 26H2
 (OS Build **26300.9711+**), through the **October 13 2026 Patch Tuesday
@@ -98,6 +98,17 @@ the manifest. No changes.
 reinstalled by `Revert.ps1`. Opt in only if you're comfortable with that.
 
 ---
+
+## What's new in v2.14.3
+
+**Hotfix: Apply stopped on Windows PowerShell 5.1** with *"Could not prepare
+the backup folder : Specified cast is not valid."* Reading back a folder's
+permissions used a bitwise test on a byte-sized flag type, which Windows
+PowerShell 5.1 cannot do (PowerShell 7 can). The values are now converted to
+plain integers first. Nothing was applied by the failed runs; the
+`C:\ProgramData\0AI_Backups` folder they created already has the right
+permissions and is reused. That error message now also names the failing
+line.
 
 ## What's new in v2.14.2
 

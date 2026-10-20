@@ -1,5 +1,5 @@
 #
-# 0AI v2.14.2 - Apply.ps1
+# 0AI v2.14.3 - Apply.ps1
 #
 # Entry point for applying privacy / AI-disablement / hardening policies.
 #
@@ -88,6 +88,7 @@ try {
     }
 } catch {
     Write-Host ('[!] Could not prepare the backup folder {0}: {1}' -f $BackupRoot, $_.Exception.Message) -ForegroundColor Red
+    Write-Host ('    at {0}' -f (($_.ScriptStackTrace -split "`n") | Select-Object -First 1))
     Write-Host '    Nothing applied. You can choose another location with -BackupRoot.'
     exit 1
 }
