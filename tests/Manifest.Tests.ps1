@@ -177,6 +177,12 @@ Describe '0AI manifest schema' {
                 })
             $msgs.Count | Should -Be 0 -Because "colliding registry targets: $($msgs -join '; ')"
         }
+        It 'no Value name contains wildcard characters (* ? [ ])' {
+            # Undo passes Value to -Name, which treats these as wildcards.
+            $bad = @($script:Registry | Where-Object { [string]$_.Value -match '[\*\?\[\]]' } |
+                ForEach-Object { '{0} (Value={1})' -f $_.Id, $_.Value })
+            $bad.Count | Should -Be 0 -Because "offenders: $($bad -join ', ')"
+        }
     }
 
     Context 'Kind=Service' {
@@ -297,6 +303,12 @@ Describe '0AI manifest schema' {
                 }
             }
             $missing.Count | Should -Be 0 -Because "ReplacedBy names unknown live Ids: $($missing -join ', ')"
+        }
+
+        It 'no retired Value name contains wildcard characters (* ? [ ])' {
+            $bad = @($script:Retired | Where-Object { $_.Value -and [string]$_.Value -match '[\*\?\[\]]' } |
+                ForEach-Object { '{0} (Value={1})' -f $_.Id, $_.Value })
+            $bad.Count | Should -Be 0 -Because "offenders: $($bad -join ', ')"
         }
     }
 }

@@ -13,9 +13,10 @@
 
 $ErrorActionPreference = 'Stop'
 
-# Undo-PolicyAction needs Test-OAiRegFileScope. No -Force: the entry script
-# has normally imported it already. If this fails, the legacy .reg restore
-# path fails closed (the call throws, the import is skipped).
+# Undo-PolicyAction needs Resolve-OAiBackupFile and Read-OAiRegFileValue. No
+# -Force: the entry script has normally imported it already. If this fails,
+# every backup-reading undo branch fails closed (the call throws, nothing is
+# written).
 try { Import-Module (Join-Path $PSScriptRoot 'OAi.Manifest.psm1') -ErrorAction Stop } catch {}
 
 # ---------------------------------------------------------------------------
@@ -420,7 +421,7 @@ function _Apply-Registry {
     if ($propType -eq 'REG_DWORD') { $propType = 'DWord' }
     if ($propType -eq 'REG_SZ')    { $propType = 'String' }
     try {
-        New-ItemProperty -Path $path -Name $Policy.Value -Value $Policy.Data -PropertyType $propType -Force -ErrorAction Stop | Out-Null
+        New-ItemProperty -LiteralPath $path -Name $Policy.Value -Value $Policy.Data -PropertyType $propType -Force -ErrorAction Stop | Out-Null
     } catch {
         # -Force cannot always overwrite a value that already exists with a
         # different registry type (e.g. a String where we expect a DWord); the
@@ -429,8 +430,8 @@ function _Apply-Registry {
         # error so a genuine ACL / AV-tamper denial is still reported as such.
         $orig = $_
         try {
-            Remove-ItemProperty -Path $path -Name $Policy.Value -Force -ErrorAction Stop
-            New-ItemProperty -Path $path -Name $Policy.Value -Value $Policy.Data -PropertyType $propType -Force -ErrorAction Stop | Out-Null
+            Remove-ItemProperty -LiteralPath $path -Name $Policy.Value -Force -ErrorAction Stop
+            New-ItemProperty -LiteralPath $path -Name $Policy.Value -Value $Policy.Data -PropertyType $propType -Force -ErrorAction Stop | Out-Null
         } catch {
             throw $orig
         }
@@ -587,15 +588,16 @@ function Undo-PolicyAction {
     try {
         switch ($Policy.Kind) {
             'Registry' {
+                $bf  = Resolve-OAiBackupFile -BackupDir $BackupDir -Recorded $BackupFile
                 $ext = ''
-                if ($BackupFile) { $ext = [System.IO.Path]::GetExtension($BackupFile) }
+                if ($bf) { $ext = [System.IO.Path]::GetExtension($bf) }
 
-                if ($BackupFile -and (Test-Path $BackupFile) -and $ext -eq '.json') {
+                if ($bf -and $ext -eq '.json') {
                     # v2.9.4+ per-value snapshot. The backup folder is
                     # user-writable and Revert runs elevated, so the location
                     # always comes from the manifest; the snapshot only
                     # supplies Existed/Type/Data, and must agree with it.
-                    $snap = Get-Content -Raw -LiteralPath $BackupFile | ConvertFrom-Json
+                    $snap = Get-Content -Raw -LiteralPath $bf | ConvertFrom-Json
                     if (-not ((_Same-RegName $snap.Hive $Policy.Hive) -and (_Same-RegName $snap.Key $Policy.Key) -and (_Same-RegName $snap.Value $Policy.Value))) {
                         $sw.Stop()
                         return (_New-Result -Id $Policy.Id -Status 'warn' -DurationMs $sw.ElapsedMilliseconds -Message ('snapshot {0} does not match {1}\{2}!{3} - not restored' -f $BackupFile, $Policy.Hive, $Policy.Key, $Policy.Value))
@@ -617,42 +619,55 @@ function Undo-PolicyAction {
                         # Object[]; New-ItemProperty needs typed arrays.
                         if ($type -eq 'Binary' -and $null -ne $data)      { $data = [byte[]]@($data) }
                         if ($type -eq 'MultiString' -and $null -ne $data) { $data = [string[]]@($data) }
-                        New-ItemProperty -Path $path -Name $Policy.Value -Value $data -PropertyType $type -Force -ErrorAction Stop | Out-Null
+                        New-ItemProperty -LiteralPath $path -Name $Policy.Value -Value $data -PropertyType $type -Force -ErrorAction Stop | Out-Null
                         $sw.Stop()
                         return (_New-Result -Id $Policy.Id -Status 'ok' -DurationMs $sw.ElapsedMilliseconds -Message ("restored {0}!{1} = {2}" -f $Policy.Key, $Policy.Value, $snap.Data))
                     } else {
                         # Value did not exist before we ran - remove it again.
-                        try { Remove-ItemProperty -Path $path -Name $Policy.Value -ErrorAction Stop } catch {}
+                        try { Remove-ItemProperty -LiteralPath $path -Name $Policy.Value -ErrorAction Stop } catch {}
                         $sw.Stop()
                         return (_New-Result -Id $Policy.Id -Status 'ok' -DurationMs $sw.ElapsedMilliseconds -Message ("removed {0}!{1} (did not exist before apply)" -f $Policy.Key, $Policy.Value))
                     }
-                } elseif ($BackupFile -and (Test-Path $BackupFile)) {
-                    # Legacy .reg backup written by v2.9.3 and earlier. A .reg
-                    # can target any key, so only import one confined to this
-                    # policy's own key.
-                    $inScope = $false
-                    try { $inScope = Test-OAiRegFileScope -RegFilePath $BackupFile -Hive $Policy.Hive -Key $Policy.Key } catch { $inScope = $false }
-                    if (-not $inScope) {
-                        $sw.Stop()
-                        return (_New-Result -Id $Policy.Id -Status 'warn' -DurationMs $sw.ElapsedMilliseconds -Message ('legacy backup {0} touches keys outside {1}\{2} - not imported' -f $BackupFile, $Policy.Hive, $Policy.Key))
-                    }
-                    $null = & reg.exe import $BackupFile 2>&1
+                } elseif ($bf) {
+                    # Legacy .reg backup (v2.9.3 and earlier). Read once into
+                    # memory and take only this policy's value; the file is
+                    # never imported, so nothing else in it is ever applied.
+                    $r = Read-OAiRegFileValue -Bytes ([System.IO.File]::ReadAllBytes($bf)) -Hive $Policy.Hive -Key $Policy.Key -Value $Policy.Value
+                    $path = Join-Path (_Resolve-Hive $Policy.Hive) $Policy.Key
                     $sw.Stop()
-                    return (_New-Result -Id $Policy.Id -Status 'ok' -DurationMs $sw.ElapsedMilliseconds -Message "reg import $BackupFile (legacy backup)")
+                    switch ($r.Status) {
+                        'found' {
+                            _Ensure-RegistryKey -Hive $Policy.Hive -Key $Policy.Key
+                            New-ItemProperty -LiteralPath $path -Name $Policy.Value -Value $r.Data -PropertyType $r.Type -Force -ErrorAction Stop | Out-Null
+                            return (_New-Result -Id $Policy.Id -Status 'ok' -DurationMs $sw.ElapsedMilliseconds -Message ("restored {0}!{1} = {2} (legacy backup)" -f $Policy.Key, $Policy.Value, $r.Data))
+                        }
+                        'absent' {
+                            try { Remove-ItemProperty -LiteralPath $path -Name $Policy.Value -ErrorAction Stop } catch {}
+                            return (_New-Result -Id $Policy.Id -Status 'ok' -DurationMs $sw.ElapsedMilliseconds -Message ("removed {0}!{1} (did not exist before apply; legacy backup)" -f $Policy.Key, $Policy.Value))
+                        }
+                        default {
+                            return (_New-Result -Id $Policy.Id -Status 'warn' -DurationMs $sw.ElapsedMilliseconds -Message ('legacy backup {0} not used: {1}' -f $bf, $r.Reason))
+                        }
+                    }
                 } else {
                     # best-effort delete
                     $path = Join-Path (_Resolve-Hive $Policy.Hive) $Policy.Key
                     try {
-                        Remove-ItemProperty -Path $path -Name $Policy.Value -ErrorAction Stop
+                        Remove-ItemProperty -LiteralPath $path -Name $Policy.Value -ErrorAction Stop
                     } catch {}
                     $sw.Stop()
                     return (_New-Result -Id $Policy.Id -Status 'warn' -DurationMs $sw.ElapsedMilliseconds -Message 'no backup; deleted value best-effort')
                 }
             }
             'Service' {
-                if ($BackupFile -and (Test-Path $BackupFile)) {
+                $bf = Resolve-OAiBackupFile -BackupDir $BackupDir -Recorded $BackupFile
+                if ($bf) {
                     try {
-                        $snap = Get-Content -Path $BackupFile -Raw | ConvertFrom-Json
+                        $snap = Get-Content -LiteralPath $bf -Raw | ConvertFrom-Json
+                        if ($snap.StartType -and @('Automatic','Manual','Disabled') -notcontains [string]$snap.StartType) {
+                            $sw.Stop()
+                            return (_New-Result -Id $Policy.Id -Status 'warn' -DurationMs $sw.ElapsedMilliseconds -Message ('service snapshot has unsupported StartType "{0}" - not restored' -f $snap.StartType))
+                        }
                         if ($snap.StartType) {
                             Set-Service -Name $Policy.Name -StartupType $snap.StartType -ErrorAction Stop
                         }
@@ -674,8 +689,8 @@ function Undo-PolicyAction {
             'DefenderPref' {
                 try {
                     $prefFile = Join-Path $BackupDir 'Defender_Prefs_before.json'
-                    if (Test-Path $prefFile) {
-                        $snap = Get-Content -Path $prefFile -Raw | ConvertFrom-Json
+                    if (Test-Path -LiteralPath $prefFile -PathType Leaf) {
+                        $snap = Get-Content -LiteralPath $prefFile -Raw | ConvertFrom-Json
                         $val = $snap.$($Policy.Preference)
                         if ($null -ne $val) {
                             $args = @{}

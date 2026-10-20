@@ -88,14 +88,6 @@ $VerifyTxt = Join-Path $BackupDir 'verification.txt'
 
 Write-Host ('[+] Backup dir: {0}' -f $BackupDir)
 
-# ---- Restore point (best-effort) ----
-try {
-    Checkpoint-Computer -Description ('0AI_Pre_' + (Get-OAiVersion)) -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop | Out-Null
-    '[+] Restore point created.' | Out-File -Encoding UTF8 -FilePath $LogFile -Append
-} catch {
-    ('[!] Restore point unavailable: ' + $_.Exception.Message) | Out-File -Encoding UTF8 -FilePath $LogFile -Append
-}
-
 # ---- Load modules ----
 Import-Module (Join-Path $moduleDir 'OAi.Engine.psm1')    -Force
 Import-Module (Join-Path $moduleDir 'OAi.Runner.psm1')    -Force
@@ -179,7 +171,7 @@ if ($Select -and $Select.Count -gt 0) {
 }
 
 # ---- Build plan ----
-$plan =New-Plan -Manifest $allPolicies.ToArray() -Categories $Categories -Selected $Select
+$plan = New-Plan -Manifest $allPolicies.ToArray() -Categories $Categories -Selected $Select
 
 if ($Categories -notcontains 'DEBLOAT' -and (-not $Select -or $Select.Count -eq 0)) {
     Write-Host '[i] DEBLOAT category excluded by default (destructive Appx removals). Use -Categories AI,PRIV,HARD,DEBLOAT,AUDIT to include.'
@@ -191,6 +183,17 @@ if ($WhatIf) {
     Write-Host ''
     Write-Host '[i] -WhatIf specified: no changes made.'
     exit 0
+}
+
+# ---- Restore point (best-effort) ----
+# Created only once the run is certain to change something: after the
+# -Select check and the -WhatIf exit, so a dry run or a rejected Id list
+# does not leave a restore point behind.
+try {
+    Checkpoint-Computer -Description ('0AI_Pre_' + (Get-OAiVersion)) -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop | Out-Null
+    '[+] Restore point created.' | Out-File -Encoding UTF8 -FilePath $LogFile -Append
+} catch {
+    ('[!] Restore point unavailable: ' + $_.Exception.Message) | Out-File -Encoding UTF8 -FilePath $LogFile -Append
 }
 
 # ---- Execute ----

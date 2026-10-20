@@ -94,52 +94,107 @@ function Test-OAiSelectIds {
     return $out.ToArray()
 }
 
-function Test-OAiRegFileScope {
-    # Fail-closed scope check for a legacy .reg backup before `reg import`:
-    # true only if every section header targets the policy's own key (or a
-    # subkey) and nothing deletes a key.
+function Resolve-OAiBackupFile {
+    # A recorded BackupFile comes from run.json, which sits in a user-writable
+    # folder while Revert runs elevated. Only its file name is trusted, and only
+    # inside BackupDir: the recorded directory is ignored, so it cannot point
+    # at another folder, a UNC path or a junction target. Returns $null if no
+    # such file exists there.
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)] [string]$RegFilePath,
-        [Parameter(Mandatory)] [ValidateSet('HKLM','HKCU')] [string]$Hive,
-        [Parameter(Mandatory)] [string]$Key
+        [Parameter(Mandatory)] [string]$BackupDir,
+        [string]$Recorded
     )
-    try {
-        $k = $Key.Trim().Trim('\')
-        if (-not $k) { return $false }
-        if (-not (Test-Path -LiteralPath $RegFilePath -PathType Leaf)) { return $false }
-
-        if ($Hive -eq 'HKLM') { $roots = @('HKEY_LOCAL_MACHINE', 'HKLM') }
-        else                  { $roots = @('HKEY_CURRENT_USER', 'HKCU') }
-        $ic = [System.StringComparison]::OrdinalIgnoreCase
-
-        # reg export writes UTF-16LE with BOM; REGEDIT4 files are ANSI.
-        # ReadAllText honours a BOM (UTF-16LE/BE, UTF-8) and otherwise reads UTF-8.
-        $text = [System.IO.File]::ReadAllText($RegFilePath)
-        $headers = 0
-        foreach ($raw in ($text -split "\r?\n")) {
-            $line = $raw.Trim()
-            if (-not $line.StartsWith('[')) { continue }
-            $headers++
-            if (-not $line.EndsWith(']')) { return $false }
-            $section = $line.Substring(1, $line.Length - 2).Trim()
-            if ($section.StartsWith('-')) { return $false }
-            $section = $section.TrimEnd('\')
-
-            $inScope = $false
-            foreach ($root in $roots) {
-                $target = $root + '\' + $k
-                if ($section.Equals($target, $ic) -or $section.StartsWith($target + '\', $ic)) {
-                    $inScope = $true
-                    break
-                }
-            }
-            if (-not $inScope) { return $false }
-        }
-        return ($headers -gt 0)
-    } catch {
-        return $false
-    }
+    if (-not $Recorded) { return $null }
+    $leaf = @($Recorded -split '[\\/]')[-1]
+    if (-not $leaf -or $leaf -eq '.' -or $leaf -eq '..') { return $null }
+    if ($leaf.IndexOfAny([System.IO.Path]::GetInvalidFileNameChars()) -ge 0 -or $leaf.Contains(':')) { return $null }
+    $candidate = Join-Path $BackupDir $leaf
+    if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { return $null }
+    return $candidate
 }
 
-Export-ModuleMember -Function Import-OAiManifestFile, Get-OAiRetiredPolicies, Test-OAiSelectIds, Test-OAiRegFileScope
+function Read-OAiRegFileValue {
+    # Reads ONE value from a legacy (v2.9.3 and earlier) .reg backup, in memory.
+    # The file is never handed to reg.exe: a .reg can carry any values under
+    # the key it names, so importing it would let a tampered backup set values
+    # the kit does not manage. Only the policy's own value, under exactly the
+    # policy's key, as a dword or plain string, is ever returned.
+    #   Status 'found'   -> Type (DWord|String) and Data
+    #   Status 'absent'  -> the key was exported but had no such value
+    #   Status 'refused' -> anything unexpected; Reason says why
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [byte[]]$Bytes,
+        [Parameter(Mandatory)] [ValidateSet('HKLM','HKCU')] [string]$Hive,
+        [Parameter(Mandatory)] [string]$Key,
+        [Parameter(Mandatory)] [string]$Value
+    )
+    function _Refuse([string]$why) { return [pscustomobject]@{ Status = 'refused'; Type = $null; Data = $null; Reason = $why } }
+    $ic = [System.StringComparison]::OrdinalIgnoreCase
+
+    # reg export writes UTF-16LE with a BOM; nothing else is accepted.
+    if ($Bytes.Length -lt 4 -or $Bytes[0] -ne 0xFF -or $Bytes[1] -ne 0xFE -or ($Bytes.Length % 2) -ne 0) {
+        return (_Refuse 'not a UTF-16LE .reg export')
+    }
+    $text = [System.Text.Encoding]::Unicode.GetString($Bytes, 2, $Bytes.Length - 2)
+    if ($text.IndexOf([char]0) -ge 0) { return (_Refuse 'contains NUL') }
+    foreach ($c in @([char]0x85, [char]0x2028, [char]0x2029)) {
+        if ($text.IndexOf($c) -ge 0) { return (_Refuse 'contains a Unicode line separator') }
+    }
+    if ($text -match "`r(?!`n)") { return (_Refuse 'contains a bare carriage return') }
+
+    $root = 'HKEY_LOCAL_MACHINE'
+    if ($Hive -eq 'HKCU') { $root = 'HKEY_CURRENT_USER' }
+    $target = '[' + $root + '\' + $Key.Trim('\') + ']'
+    $nameEsc = $Value.Replace('\', '\\').Replace('"', '\"')
+    $prefix = '"' + $nameEsc + '"='
+
+    $inTarget = $false
+    $sections = 0
+    $hits = New-Object System.Collections.Generic.List[string]
+    $continued = $false
+    foreach ($raw in ($text -split "`r?`n")) {
+        $line = $raw.Trim()
+        if ($continued) { $continued = $line.EndsWith('\'); continue }
+        if ($line.StartsWith('[')) {
+            $inTarget = $line.Equals($target, $ic)
+            if ($inTarget) { $sections++ }
+            continue
+        }
+        if ($line.EndsWith('\')) { $continued = $true }
+        if ($inTarget -and $line.StartsWith($prefix, $ic)) { [void]$hits.Add($line) }
+    }
+    if ($sections -eq 0) { return (_Refuse ('no section for ' + $target)) }
+    if ($sections -gt 1) { return (_Refuse ('section ' + $target + ' appears more than once')) }
+    if ($hits.Count -eq 0) { return [pscustomobject]@{ Status = 'absent'; Type = $null; Data = $null; Reason = $null } }
+    if ($hits.Count -gt 1) { return (_Refuse 'value appears more than once') }
+
+    $rhs = $hits[0].Substring($prefix.Length).Trim()
+    if ($rhs.EndsWith('\')) { return (_Refuse 'multi-line value data') }
+    if ($rhs -match '^(?i)dword:([0-9a-f]{8})$') {
+        $u = [Convert]::ToUInt32($Matches[1], 16)
+        $i = [BitConverter]::ToInt32([BitConverter]::GetBytes($u), 0)
+        return [pscustomobject]@{ Status = 'found'; Type = 'DWord'; Data = $i; Reason = $null }
+    }
+    if ($rhs.Length -ge 2 -and $rhs.StartsWith('"') -and $rhs.EndsWith('"')) {
+        $inner = $rhs.Substring(1, $rhs.Length - 2)
+        $sb = New-Object System.Text.StringBuilder
+        for ($k = 0; $k -lt $inner.Length; $k++) {
+            $ch = $inner[$k]
+            if ($ch -eq '"') { return (_Refuse 'unescaped quote in string data') }
+            if ($ch -eq '\') {
+                if ($k + 1 -ge $inner.Length) { return (_Refuse 'dangling escape in string data') }
+                $nx = $inner[$k + 1]
+                if ($nx -ne '\' -and $nx -ne '"') { return (_Refuse 'unsupported escape in string data') }
+                [void]$sb.Append($nx); $k++
+                continue
+            }
+            [void]$sb.Append($ch)
+        }
+        return [pscustomobject]@{ Status = 'found'; Type = 'String'; Data = $sb.ToString(); Reason = $null }
+    }
+    return (_Refuse 'only dword and plain string data are restored from legacy backups')
+}
+
+Export-ModuleMember -Function Import-OAiManifestFile, Get-OAiRetiredPolicies, Test-OAiSelectIds, Resolve-OAiBackupFile, Read-OAiRegFileValue

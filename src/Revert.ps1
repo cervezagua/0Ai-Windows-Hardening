@@ -84,7 +84,7 @@ $logFile = Join-Path $BackupDir 'revert.log'
 ('[+] 0AI {0} Revert starting' -f (Get-OAiVersion)) | Out-File -Encoding UTF8 -FilePath $logFile -Append
 ('[+] BackupDir: ' + $BackupDir) | Out-File -Encoding UTF8 -FilePath $logFile -Append
 
-if (-not (Test-Path $runJson)) {
+if (-not (Test-Path -LiteralPath $runJson -PathType Leaf)) {
     Write-Host ('[!] run.json not found at {0}' -f $runJson) -ForegroundColor Red
     '[!] run.json missing' | Out-File -Encoding UTF8 -FilePath $logFile -Append
     exit 1
@@ -126,8 +126,9 @@ function _Undo-RetiredPolicy {
         return [pscustomobject]@{ Id = $id; Status = 'warn'; Message = 'retired entry is malformed - skipped' }
     }
     $pol = @{ Id = $id; Kind = 'Registry'; Hive = $hive; Key = [string]$Retired.Key; Value = [string]$Retired.Value }
-    $hasBackup = [bool]($BackupFile -and (Test-Path -LiteralPath $BackupFile -PathType Leaf))
-    $isJson    = $hasBackup -and ([System.IO.Path]::GetExtension($BackupFile) -eq '.json')
+    $resolved  = Resolve-OAiBackupFile -BackupDir $BackupDir -Recorded $BackupFile
+    $hasBackup = [bool]$resolved
+    $isJson    = $hasBackup -and ([System.IO.Path]::GetExtension($resolved) -eq '.json')
     $prefix    = 'retired in {0}: ' -f $Retired.RetiredIn
 
     if ($Retired.Cleanup -ne $true -and -not $hasBackup) {
@@ -165,7 +166,7 @@ try {
     ('[!] Restore point unavailable: ' + $_.Exception.Message) | Out-File -Encoding UTF8 -FilePath $logFile -Append
 }
 
-$run = Get-Content -Path $runJson -Raw | ConvertFrom-Json
+$run = Get-Content -LiteralPath $runJson -Raw | ConvertFrom-Json
 $results = @($run.Results)
 
 $counters = @{ ok = 0; warn = 0; error = 0; skipped = 0 }
