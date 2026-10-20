@@ -1,5 +1,5 @@
 #
-# 0AI v2.13.0 - Snapshot-AIShellVerbs.ps1
+# 0AI v2.14.0 - Snapshot-AIShellVerbs.ps1
 #
 # Read-only diagnostic. Enumerates the shell verbs and COM registrations
 # that Microsoft uses to expose the "AI actions" submenu when you
@@ -38,6 +38,7 @@ try {
     [System.Threading.Thread]::CurrentThread.CurrentUICulture = $script:OAiCulture
 } catch {}
 
+$thisDir = Split-Path -Parent $PSCommandPath
 
 function _Print-Header {
     param([string]$Text)
@@ -150,26 +151,56 @@ if (Test-Path $se) {
     }
 }
 
-# Effective state of the policies the kit writes, so we can correlate
-_Print-Header 'Current state of kit-managed keys'
-$checks = @(
-    @{ Hive='HKLM'; Key='SOFTWARE\Policies\Microsoft\Windows\Explorer'; Value='HideAIActionsMenu' }
-    @{ Hive='HKCU'; Key='Software\Policies\Microsoft\Windows\Explorer'; Value='HideAIActionsMenu' }
-    @{ Hive='HKLM'; Key='SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Paint'; Value='DisableCocreator' }
-    @{ Hive='HKLM'; Key='SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Paint'; Value='DisableGenerativeFill' }
-    @{ Hive='HKLM'; Key='SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Paint'; Value='DisableImageCreator' }
-    @{ Hive='HKLM'; Key='SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\systemAIModels'; Value='Value' }
-    @{ Hive='HKCU'; Key='Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\systemAIModels'; Value='Value' }
-    @{ Hive='HKLM'; Key='SYSTEM\CurrentControlSet\Services\IsoEnvBroker'; Value='Enabled' }
-    @{ Hive='HKCU'; Key='Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked'; Value='{CB3B0003-8088-4EDE-8769-8B354AB2FF8C}' }
-)
-foreach ($c in $checks) {
-    $full = ($c.Hive + ':\' + $c.Key)
-    $cur  = $null
-    try { $cur = (Get-ItemProperty -Path $full -ErrorAction Stop).$($c.Value) } catch {}
-    $tag  = if ($null -eq $cur) { '(unset)' } else { [string]$cur }
-    Write-Host ('  {0}!{1} = {2}' -f $full, $c.Value, $tag)
+# Effective state of the policies the kit writes, so we can correlate.
+# Derived from the manifest so this list cannot drift from what Apply writes.
+function _Read-RegValue {
+    param([string]$Hive, [string]$Key, [string]$Value)
+    try {
+        $props = Get-ItemProperty -LiteralPath ($Hive + ':\' + $Key) -ErrorAction Stop
+        if ($props.PSObject.Properties.Name -contains $Value) { return ,$props.$Value }
+    } catch {}
+    return $null
 }
+
+$aiPolicies = @()
+$retired    = @()
+try {
+    Import-Module (Join-Path (Join-Path $thisDir 'module') 'OAi.Manifest.psm1') -Force -ErrorAction Stop
+    $aiAll      = Import-OAiManifestFile -Path (Join-Path (Join-Path $thisDir 'manifest') 'ai.psd1')
+    $aiPolicies = @($aiAll | Where-Object { $_.Kind -eq 'Registry' })
+    $retired    = Get-OAiRetiredPolicies
+} catch {
+    Write-Host ('  (could not load manifest: {0})' -f $_.Exception.Message)
+}
+
+_Print-Header 'Current state of kit-managed keys (AI manifest)'
+foreach ($p in $aiPolicies) {
+    $cur = _Read-RegValue -Hive $p.Hive -Key $p.Key -Value $p.Value
+    $expected = [string]$p.Data
+    if ($null -eq $cur) {
+        $state = 'unset'
+        $shown = '(unset)'
+    } else {
+        $shown = (@($cur) | ForEach-Object { [string]$_ }) -join ','
+        if ($shown -eq $expected) { $state = 'match' } else { $state = 'mismatch' }
+    }
+    Write-Host ('  [{0,-8}] {1}' -f $state, $p.Id)
+    Write-Host ('             {0}:\{1}!{2} = {3}  (expected {4})' -f $p.Hive, $p.Key, $p.Value, $shown, $expected)
+}
+
+_Print-Header 'Leftover values from retired policies'
+$leftovers = 0
+foreach ($r in $retired) {
+    # Cleanup=$false values are still written by a live policy, so their
+    # presence is expected, not a leftover.
+    if ($r.Kind -ne 'Registry' -or $r.Cleanup -ne $true) { continue }
+    $cur = _Read-RegValue -Hive $r.Hive -Key $r.Key -Value $r.Value
+    if ($null -eq $cur) { continue }
+    $leftovers++
+    Write-Host ('  {0}  (retired in {1})' -f $r.Id, $r.RetiredIn)
+    Write-Host ('             {0}:\{1}!{2} = {3}  - 0AI_Revert removes it when reverting the backup that recorded this Id' -f $r.Hive, $r.Key, $r.Value, ((@($cur) | ForEach-Object { [string]$_ }) -join ','))
+}
+if ($leftovers -eq 0) { Write-Host '  (none)' }
 
 Write-Host ''
 Write-Host 'Done. Share the output above if the AI Actions menu still appears'

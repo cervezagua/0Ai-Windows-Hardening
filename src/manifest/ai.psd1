@@ -185,7 +185,7 @@
         Destructive = $false
     },
     @{
-        Id          = 'AI.WindowsAI.DisableRecallDataProviders'
+        Id          = 'AI.WindowsAI.DisableRecallDataProviders.HKLM'
         Category    = 'AI'
         Group       = 'reg-safe'
         Description = 'Disable Recall data providers (HKLM mirror, best-effort; documented scope is HKCU)'

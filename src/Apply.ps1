@@ -1,5 +1,5 @@
 #
-# 0AI v2.13.0 - Apply.ps1
+# 0AI v2.14.0 - Apply.ps1
 #
 # Entry point for applying privacy / AI-disablement / hardening policies.
 #
@@ -66,6 +66,7 @@ $manifestDir = Join-Path $thisDir 'manifest'
 # Version module first: the log header and restore-point name below call
 # Get-OAiVersion, so it must be loaded before any other work.
 Import-Module (Join-Path $moduleDir 'OAi.Version.psm1') -Force
+Import-Module (Join-Path $moduleDir 'OAi.Manifest.psm1') -Force
 
 if (-not $BackupRoot) {
     $BackupRoot = Join-Path $env:USERPROFILE '0AI_Backups'
@@ -102,42 +103,12 @@ Import-Module (Join-Path $moduleDir 'OAi.UI.Console.psm1') -Force
 Import-Module (Join-Path $moduleDir 'OAi.UI.Plan.psm1')    -Force
 Import-Module (Join-Path $moduleDir 'OAi.UI.Launcher.psm1') -Force
 
-# ---- Manifest loader ----
-# Note: Import-PowerShellDataFile rejects top-level arrays. Our manifests are
-# @(...) at the top level, so we parse via AST and call SafeGetValue(), which
-# is the PS-supported "constrained literal eval" path (PS 5.1+).
-function _Collect-Hashtables {
-    param($Val, [System.Collections.Generic.List[object]]$Acc)
-    if ($null -eq $Val) { return }
-    if ($Val -is [System.Collections.IDictionary]) { [void]$Acc.Add($Val); return }
-    if ($Val -is [System.Collections.IEnumerable] -and $Val -isnot [string]) {
-        foreach ($v in $Val) { _Collect-Hashtables -Val $v -Acc $Acc }
-        return
-    }
-    # scalar: ignore
-}
-function _Load-PolicyManifest {
-    param([string]$Path)
-    $tokens = $null
-    $errs   = $null
-    $ast = [System.Management.Automation.Language.Parser]::ParseFile($Path, [ref]$tokens, [ref]$errs)
-    if ($errs -and @($errs).Count -gt 0) {
-        throw ('parse error in {0}: {1}' -f (Split-Path -Leaf $Path), @($errs)[0].Message)
-    }
-    $stmts = @($ast.EndBlock.Statements)
-    if ($stmts.Count -eq 0) { return ,@() }
-    $val = $stmts[0].PipelineElements[0].Expression.SafeGetValue()
-    $acc = New-Object System.Collections.Generic.List[object]
-    _Collect-Hashtables -Val $val -Acc $acc
-    return ,$acc.ToArray()
-}
-
 # ---- Load manifest ----
 $manifestFiles = Get-ChildItem -Path $manifestDir -Filter '*.psd1' -ErrorAction Stop
 $allPolicies = New-Object System.Collections.Generic.List[object]
 foreach ($mf in $manifestFiles) {
     try {
-        $data = _Load-PolicyManifest -Path $mf.FullName
+        $data = Import-OAiManifestFile -Path $mf.FullName
         foreach ($p in $data) {
             if ($null -ne $p) { $allPolicies.Add($p) }
         }
@@ -175,8 +146,40 @@ if ($PSBoundParameters.Count -eq 0) {
     }
 }
 
+# ---- Elevated as a different account? ----
+# Printed after the launcher, which clears the screen.
+try {
+    $interactiveUser = Get-OAiInteractiveUser
+    $elevatedUser    = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    if ($interactiveUser -and -not [string]::Equals($interactiveUser, $elevatedUser, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $um = ('[!] Running as {0}, but {1} is signed in at this desktop. Per-user (HKCU) policies will land in {0}''s profile, not {1}''s. To cover {1}, run the kit while signed in as {1}, using an admin account of their own.' -f $elevatedUser, $interactiveUser)
+        Write-Host $um -ForegroundColor Yellow
+        $um | Out-File -Encoding UTF8 -FilePath $LogFile -Append
+    }
+} catch {}
+
+# ---- Validate -Select ----
+if ($Select -and $Select.Count -gt 0) {
+    $retired = @()
+    try {
+        $retired = Get-OAiRetiredPolicies
+    } catch {
+        ('[!] Failed to load retired policy list: ' + $_.Exception.Message) | Out-File -Encoding UTF8 -FilePath $LogFile -Append
+    }
+    $unknown = @(Test-OAiSelectIds -Select $Select -LivePolicies $allPolicies.ToArray() -Retired $retired)
+    if ($unknown.Count -gt 0) {
+        foreach ($u in $unknown) {
+            Write-Host ('[!] ' + $u.Message) -ForegroundColor Red
+            ('[!] -Select: ' + $u.Message) | Out-File -Encoding UTF8 -FilePath $LogFile -Append
+        }
+        Write-Host '[!] Nothing applied. Fix the -Select list and run again.' -ForegroundColor Red
+        '[!] Aborted: unknown -Select Id(s); nothing applied.' | Out-File -Encoding UTF8 -FilePath $LogFile -Append
+        exit 2
+    }
+}
+
 # ---- Build plan ----
-$plan = New-Plan -Manifest $allPolicies.ToArray() -Categories $Categories -Selected $Select
+$plan =New-Plan -Manifest $allPolicies.ToArray() -Categories $Categories -Selected $Select
 
 if ($Categories -notcontains 'DEBLOAT' -and (-not $Select -or $Select.Count -eq 0)) {
     Write-Host '[i] DEBLOAT category excluded by default (destructive Appx removals). Use -Categories AI,PRIV,HARD,DEBLOAT,AUDIT to include.'
