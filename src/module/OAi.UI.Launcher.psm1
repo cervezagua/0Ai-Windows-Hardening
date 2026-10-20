@@ -1,5 +1,5 @@
 #
-# OAi.UI.Launcher.psm1 - v2.14.3 arrow-key picker for 0AI Apply (Design 2)
+# OAi.UI.Launcher.psm1 - v2.14.4 arrow-key picker for 0AI Apply (Design 2)
 #
 # Light-line box + arrow-key + checkbox picker. Shows when the user
 # double-clicks 0AI_Apply.cmd with no arguments.
@@ -23,7 +23,9 @@ $ErrorActionPreference = 'Stop'
 
 # Version banner text comes from the shared version module (single source
 # of truth). Imported here so this module also works when loaded standalone.
-Import-Module (Join-Path $PSScriptRoot 'OAi.Version.psm1') -Force
+# No -Force: from inside a module, -Force unloads the copy the calling
+# script already imported, and Get-OAiVersion then vanishes for it.
+Import-Module (Join-Path $PSScriptRoot 'OAi.Version.psm1')
 
 $script:INNER_WIDTH = 62
 

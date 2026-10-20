@@ -11,7 +11,9 @@ $ErrorActionPreference = 'Stop'
 
 # Version banner text comes from the shared version module (single source
 # of truth). Imported here so this module also works when loaded standalone.
-Import-Module (Join-Path $PSScriptRoot 'OAi.Version.psm1') -Force
+# No -Force: from inside a module, -Force unloads the copy the calling
+# script already imported, and Get-OAiVersion then vanishes for it.
+Import-Module (Join-Path $PSScriptRoot 'OAi.Version.psm1')
 
 # PS 5.1 does not recognize `e as the escape character (added in PS 6). Use the
 # actual char so ANSI sequences render correctly on Windows PowerShell 5.1.

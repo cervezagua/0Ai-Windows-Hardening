@@ -1,5 +1,5 @@
 #
-# 0AI v2.14.3 - Verify.ps1
+# 0AI v2.14.4 - Verify.ps1
 #
 # Read-only: queries current state of every manifest policy and prints a
 # table showing Id | Expected | Current | Status.

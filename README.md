@@ -1,7 +1,7 @@
 # 0AI - Windows Hardening Kit
 
 ### Windows 11 Privacy, AI Disablement & Security Hardening
-**Version:** `v2.14.3`
+**Version:** `v2.14.4`
 
 **Supported baselines:** Windows 11 25H2 (OS Build **26200.9711+**) and 26H2
 (OS Build **26300.9711+**), through the **October 13 2026 Patch Tuesday
@@ -98,6 +98,16 @@ the manifest. No changes.
 reinstalled by `Revert.ps1`. Opt in only if you're comfortable with that.
 
 ---
+
+## What's new in v2.14.4
+
+**Hotfix: no restore point and no `verification.txt`.** Apply logged
+*"The term 'Get-OAiVersion' is not recognized"* for both. The console, plan
+and launcher modules re-imported the version module with `-Force`, which
+unloads the copy Apply had loaded. The `verification.txt` failure dates back
+to v2.12.0; the restore point was hit once v2.14.0 moved it after the menu.
+A new test (`tests/Modules.Tests.ps1`) rejects `Import-Module -Force` inside
+modules.
 
 ## What's new in v2.14.3
 
@@ -1076,7 +1086,7 @@ Windows installs.
 |   `-- module/              engine + runner + UI + launcher picker + version
 |                            + shared manifest loader (OAi.Manifest.psm1)
 |                            + admin-only backup folders (OAi.BackupAcl.psm1)
-|-- tests/Manifest.Tests.ps1, tests/BackupAcl.Tests.ps1
+|-- tests/Manifest.Tests.ps1, BackupAcl.Tests.ps1, Modules.Tests.ps1
 |-- docs/ARCHITECTURE.md
 |-- legacy/                  v2.2 .bat scripts, preserved for reference
 `-- README.md                (this file)
