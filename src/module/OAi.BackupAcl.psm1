@@ -103,7 +103,10 @@ function _Read-Acl {
                 Sid         = $sid
                 Mask        = $mask
                 Allow       = $isAllow
-                InheritOnly = (($ace.AceFlags -band [System.Security.AccessControl.AceFlags]::InheritOnly) -ne 0)
+                # [int] on both sides: AceFlags is a byte enum, and Windows
+                # PowerShell 5.1 throws "Specified cast is not valid" on -band
+                # between byte enums.
+                InheritOnly = ((([int]$ace.AceFlags) -band ([int][System.Security.AccessControl.AceFlags]::InheritOnly)) -ne 0)
             }
         })
     }
@@ -114,7 +117,7 @@ function _Read-Acl {
 
 function _Is-Link {
     param($Item)
-    return (($Item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
+    return ((([int]$Item.Attributes) -band ([int][System.IO.FileAttributes]::ReparsePoint)) -ne 0)
 }
 
 function _Walk {
@@ -212,7 +215,7 @@ function New-OAiLockedDir {
     param([Parameter(Mandatory)][string]$Path, [switch]$NoUserRead, [switch]$UsersList)
     if (Test-Path -LiteralPath $Path) { throw ('{0} already exists' -f $Path) }
     $ds = New-Object System.Security.AccessControl.DirectorySecurity
-    $sections = [System.Security.AccessControl.AccessControlSections]::Owner -bor [System.Security.AccessControl.AccessControlSections]::Group -bor [System.Security.AccessControl.AccessControlSections]::Access
+    $sections = [System.Security.AccessControl.AccessControlSections]([int][System.Security.AccessControl.AccessControlSections]::Owner -bor [int][System.Security.AccessControl.AccessControlSections]::Group -bor [int][System.Security.AccessControl.AccessControlSections]::Access)
     $ds.SetSecurityDescriptorSddlForm((_Sddl -NoUserRead:$NoUserRead -UsersList:$UsersList), $sections)
     if ($PSVersionTable.PSEdition -eq 'Desktop') {
         [void][System.IO.Directory]::CreateDirectory($Path, $ds)
