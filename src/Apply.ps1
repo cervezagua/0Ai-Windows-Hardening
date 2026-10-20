@@ -1,5 +1,5 @@
 #
-# 0AI v2.14.1 - Apply.ps1
+# 0AI v2.14.2 - Apply.ps1
 #
 # Entry point for applying privacy / AI-disablement / hardening policies.
 #
@@ -67,14 +67,33 @@ $manifestDir = Join-Path $thisDir 'manifest'
 # Get-OAiVersion, so it must be loaded before any other work.
 Import-Module (Join-Path $moduleDir 'OAi.Version.psm1') -Force
 Import-Module (Join-Path $moduleDir 'OAi.Manifest.psm1') -Force
+Import-Module (Join-Path $moduleDir 'OAi.BackupAcl.psm1') -Force
 
 if (-not $BackupRoot) {
     $BackupRoot = Join-Path $env:USERPROFILE '0AI_Backups'
 }
 $stamp = Get-Date -Format 'yyyy-MM-dd_HHmmss'
+if (-not (Test-Path -LiteralPath $BackupRoot)) {
+    New-Item -ItemType Directory -Force -Path $BackupRoot | Out-Null
+}
+# Always a brand-new folder (no -Force): one that already exists under this
+# name was not made by this run, so it is not used.
 $BackupDir = Join-Path $BackupRoot $stamp
-if (-not (Test-Path $BackupDir)) {
-    New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
+try {
+    New-Item -ItemType Directory -Path $BackupDir -ErrorAction Stop | Out-Null
+} catch {
+    Write-Host ('[!] Could not create a new backup folder {0}: {1}' -f $BackupDir, $_.Exception.Message) -ForegroundColor Red
+    exit 1
+}
+# Admin-only before anything is written to it: Revert later trusts these
+# files with admin rights. Fails on file systems without permissions (FAT,
+# some network shares); Apply continues and Revert will ask before use.
+$lockMsg = '[+] Backup folder locked to Administrators/SYSTEM (read-only for you).'
+try {
+    Protect-OAiBackupDir -Path $BackupDir
+} catch {
+    $lockMsg = '[!] Could not make the backup folder admin-only: ' + $_.Exception.Message
+    Write-Host $lockMsg -ForegroundColor Yellow
 }
 
 $LogFile   = Join-Path $BackupDir 'apply.log'
@@ -85,6 +104,7 @@ $VerifyTxt = Join-Path $BackupDir 'verification.txt'
 ('[+] BackupDir: ' + $BackupDir)                      | Out-File -Encoding UTF8 -FilePath $LogFile -Append
 ('[+] Categories: ' + ($Categories -join ','))        | Out-File -Encoding UTF8 -FilePath $LogFile -Append
 ('[+] PS version: ' + $PSVersionTable.PSVersion)      | Out-File -Encoding UTF8 -FilePath $LogFile -Append
+$lockMsg                                              | Out-File -Encoding UTF8 -FilePath $LogFile -Append
 
 Write-Host ('[+] Backup dir: {0}' -f $BackupDir)
 

@@ -1,5 +1,5 @@
 #
-# 0AI v2.14.1 - Snapshot-AIShellVerbs.ps1
+# 0AI v2.14.2 - Snapshot-AIShellVerbs.ps1
 #
 # Read-only diagnostic. Enumerates the shell verbs and COM registrations
 # that Microsoft uses to expose the "AI actions" submenu when you

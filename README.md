@@ -1,7 +1,7 @@
 # 0AI - Windows Hardening Kit
 
 ### Windows 11 Privacy, AI Disablement & Security Hardening
-**Version:** `v2.14.1`
+**Version:** `v2.14.2`
 
 **Supported baselines:** Windows 11 25H2 (OS Build **26200.9711+**) and 26H2
 (OS Build **26300.9711+**), through the **October 13 2026 Patch Tuesday
@@ -98,6 +98,36 @@ reinstalled by `Revert.ps1`. Opt in only if you're comfortable with that.
 
 ---
 
+## What's new in v2.14.2
+
+**Backup folders are admin-only.** This closes the known limitation from
+v2.14.0. Revert runs with admin rights and restores whatever "previous"
+values a backup holds, and backups live under `%USERPROFILE%`, where any
+program you run can write. Now:
+
+- **Apply** creates each `0AI_Backups\<timestamp>` folder fresh (never
+  reusing an existing one) and, before writing anything to it, locks it:
+  owner Administrators, full control for SYSTEM and Administrators,
+  **read-only for you**, nothing inherited from your profile. Everything
+  written into it inherits that. If the drive doesn't support permissions
+  (FAT, some network shares), Apply warns and carries on.
+- **Revert** checks that the backup folder and every file in it is still
+  writable only by Administrators, SYSTEM or TrustedInstaller before using
+  it.
+  - With no `-BackupDir`, it picks the newest admin-only backup, so a newer
+    folder some other program dropped in `0AI_Backups` doesn't win.
+  - Backups made by v2.14.1 or earlier aren't admin-only. Revert explains
+    this and asks you to type `YES` to use one anyway (non-interactive runs
+    need `-AllowUnlockedBackup`); it then locks the folder before reading
+    it.
+  - A backup folder that is, or contains, a junction or symbolic link is
+    never used.
+- New module `src/module/OAi.BackupAcl.psm1`; its permission decision has
+  its own Pester tests (`tests/BackupAcl.Tests.ps1`, 38 tests in total).
+
+Programs without admin rights can still rename or delete backup folders,
+but not change what is in them.
+
 ## What's new in v2.14.1
 
 **Seven AI entries with no working source are retired.** v2.14.0 listed them
@@ -148,7 +178,8 @@ folder than it needed to. Now:
 can still change the recorded *previous* value of a setting the kit manages,
 for example so that Revert switches RDP back on. Keep the kit folder and its
 backups somewhere only you control. Locking the backup folder down to
-Administrators is a candidate for a future release.
+Administrators is a candidate for a future release. (Fixed in v2.14.2:
+backup folders are admin-only and Revert checks them.)
 
 ### Revert
 
@@ -1022,7 +1053,8 @@ Windows installs.
 |   |-- retired/retired.psd1 Ids older versions applied that Revert can still undo
 |   `-- module/              engine + runner + UI + launcher picker + version
 |                            + shared manifest loader (OAi.Manifest.psm1)
-|-- tests/Manifest.Tests.ps1
+|                            + admin-only backup folders (OAi.BackupAcl.psm1)
+|-- tests/Manifest.Tests.ps1, tests/BackupAcl.Tests.ps1
 |-- docs/ARCHITECTURE.md
 |-- legacy/                  v2.2 .bat scripts, preserved for reference
 `-- README.md                (this file)
@@ -1048,12 +1080,15 @@ execution, `-WhatIf`, structured revert, and Pester schema tests.
 
 Before making changes, Apply:
 - Creates a best-effort **System Restore Point**
-- Writes per-policy backup snapshots to
-  `%USERPROFILE%\0AI_Backups\<timestamp>\`
+- Writes per-policy backup snapshots to a new
+  `%USERPROFILE%\0AI_Backups\<timestamp>\` folder, locked to Administrators
+  and SYSTEM (read-only for you) before anything is written to it
 - Saves `apply.log`, `run.json`, and `verification.txt`
 
 Revert:
-- Reads the newest `run.json`
+- Reads the newest admin-only backup's `run.json`. A backup that programs
+  without admin rights could have modified (v2.14.1 or earlier) needs a
+  typed `YES` or `-AllowUnlockedBackup`; one containing a link is refused
 - Restores registry values from per-value JSON snapshots. The value's
   location always comes from the manifest; a snapshot for a different key,
   or with a non-registry type, is refused. Backup files are looked up by
@@ -1067,9 +1102,6 @@ Revert:
   removes inert leftover values when no snapshot shows they existed before
 - Prints a `[warn] … skipped` line for any Id that is neither live nor
   retired
-- Trusts the backup folder for *previous values*: anything that can write
-  `%USERPROFILE%\0AI_Backups` can change what Revert restores for a setting
-  the kit manages. Keep it somewhere only you control
 - Restores Defender preferences from the pre-run snapshot
 - Removes the ASR rules it added
 - **Resets** the process mitigations to Windows defaults (deletes the system

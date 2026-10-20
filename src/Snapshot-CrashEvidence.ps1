@@ -1,5 +1,5 @@
 #
-# 0AI v2.14.1 - Snapshot-CrashEvidence.ps1
+# 0AI v2.14.2 - Snapshot-CrashEvidence.ps1
 #
 # Read-only diagnostic. Collects everything needed to work out why a machine
 # is bugchecking or killing services, in one command.
