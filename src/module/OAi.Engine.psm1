@@ -674,6 +674,10 @@ function Undo-PolicyAction {
                 if ($bf) {
                     try {
                         $snap = Get-Content -LiteralPath $bf -Raw | ConvertFrom-Json
+                        if ($snap.Name -and -not [string]::Equals([string]$snap.Name, [string]$Policy.Name, [System.StringComparison]::OrdinalIgnoreCase)) {
+                            $sw.Stop()
+                            return (_New-Result -Id $Policy.Id -Status 'warn' -DurationMs $sw.ElapsedMilliseconds -Message ('service snapshot is for "{0}", not "{1}" - not restored' -f $snap.Name, $Policy.Name))
+                        }
                         if ($snap.StartType -and @('Automatic','Manual','Disabled') -notcontains [string]$snap.StartType) {
                             $sw.Stop()
                             return (_New-Result -Id $Policy.Id -Status 'warn' -DurationMs $sw.ElapsedMilliseconds -Message ('service snapshot has unsupported StartType "{0}" - not restored' -f $snap.StartType))

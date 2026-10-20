@@ -116,13 +116,23 @@ snapshot for it, which holds the value from before the kit last changed it.
 - Backups from v2.14.1 or earlier are not protected, so Revert lists them and
   asks for `YES` once (or `-AllowUnlockedBackup`). It then reads them only
   from admin-only copies. If you say no, it behaves as before.
+- Only policies Apply *skipped* get this. A policy that failed in Apply never
+  changed anything and is left alone.
+- "Before" means before the kit last changed the setting. If an older kit
+  version wrote a different value in between, that run's snapshot is what
+  gets restored, just as reverting that run would.
+- Only protected backups (or ones you confirmed) can end the search, so no
+  other program can block a restore by planting a `revert.log`.
+- `-AllowUnlockedBackup` covers older unprotected backups only when the backup
+  you are reverting is itself an unprotected one.
+- A service snapshot for a different service is refused.
 - Lines restored this way say `from older backup <timestamp>:`.
 - Backups are now ordered by their timestamp name, not by when the folder
   was last written; a Revert writes into the folder it reverts.
 - Working copies of untrusted backups record where they came from
   (`source.txt`), so later Reverts know what was already reverted.
 - New module `src/module/OAi.BackupHistory.psm1`, with tests in
-  `tests/BackupHistory.Tests.ps1` (55 tests in total).
+  `tests/BackupHistory.Tests.ps1` (64 tests in total).
 
 ## What's new in v2.14.4
 

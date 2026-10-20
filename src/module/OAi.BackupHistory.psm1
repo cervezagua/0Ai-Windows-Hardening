@@ -10,7 +10,9 @@
 #
 # A search stops at an older run whose own Revert already restored that Id
 # ("[ok     ] <Id>" in its revert.log): that run's "before" value was put back
-# then, so anything older is superseded.
+# then, so anything older is superseded. Only trusted runs (admin-only, or
+# copies the user confirmed) can stop a search: otherwise any program could
+# plant a revert.log to suppress a restore.
 #
 # Pure functions on plain data; Revert.ps1 does the file system work.
 #
@@ -38,12 +40,13 @@ function Select-OAiFallbackSnapshots {
     #           Results     run.json results (objects with Id, BackupFile)
     #           Files       leaf names of the files present in Dir
     #           RevertedIds Ids its own revert.log reports as restored
+    #           Trusted     only a trusted run's RevertedIds stop a search
     # Returns a hashtable Id -> @{ Name; Dir; BackupFile }.
     param([string[]]$Ids, $Older)
     $map = @{}
     foreach ($id in @($Ids)) {
         foreach ($o in @($Older)) {
-            if (@($o.RevertedIds) -contains $id) { break }
+            if ($o.Trusted -and @($o.RevertedIds) -contains $id) { break }
             $hit = $null
             foreach ($r in @($o.Results)) {
                 if ([string]$r.Id -ne $id) { continue }
@@ -61,4 +64,35 @@ function Select-OAiFallbackSnapshots {
     return $map
 }
 
-Export-ModuleMember -Function Get-OAiRevertedIds, Select-OAiFallbackSnapshots
+$script:StampPattern = '^\d{4}-\d{2}-\d{2}_\d{6}$'
+
+function Get-OAiCutoffName {
+    # The timestamp that "older" is measured against: the selected folder's
+    # own name, or for an imported-* working copy the name of the folder it
+    # was copied from. $null (no fallback search) for anything else.
+    param([string]$SelectedName, [string]$SourcePath)
+    if ($SelectedName -match $script:StampPattern) { return $SelectedName }
+    if ($SelectedName -like 'imported-*' -and $SourcePath) {
+        # Split by hand: Split-Path only knows the current OS's separator.
+        $leaf = @($SourcePath.Trim().TrimEnd('\', '/') -split '[\\/]')[-1]
+        if ($leaf -match $script:StampPattern) { return $leaf }
+    }
+    return $null
+}
+
+function Select-OAiOlderFolders {
+    # Folders (objects with Name, FullName) that are strictly older than
+    # $Cutoff, newest first. Only timestamp-named folders count, and the
+    # folders in $Exclude (the selected one and its original) never do.
+    param($Folders, [string]$Cutoff, [string[]]$Exclude = @())
+    if (-not $Cutoff) { return @() }
+    $ex = @($Exclude | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\', '/').ToLowerInvariant() })
+    $keep = @(@($Folders) | Where-Object {
+            $_ -and $_.Name -match $script:StampPattern -and
+            [string]::CompareOrdinal([string]$_.Name, $Cutoff) -lt 0 -and
+            $ex -notcontains ([string]$_.FullName).TrimEnd('\', '/').ToLowerInvariant()
+        })
+    return @($keep | Sort-Object -Property @{ Expression = { [string]$_.Name } } -Descending)
+}
+
+Export-ModuleMember -Function Get-OAiRevertedIds, Select-OAiFallbackSnapshots, Get-OAiCutoffName, Select-OAiOlderFolders

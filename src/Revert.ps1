@@ -83,13 +83,14 @@ function _Get-BackupFolders {
 }
 
 function _Confirm-Untrusted {
-    # One YES (or -AllowUnlockedBackup) before Revert uses data from a backup
-    # that programs without admin rights could have changed.
-    if ($AllowUnlockedBackup) { return $true }
+    # One YES (or -AllowUnlockedBackup where it applies) before Revert uses
+    # data from a backup that programs without admin rights could have changed.
+    param([bool]$SwitchApplies, [string]$NonInteractiveNote = 'Not interactive: pass -AllowUnlockedBackup to use it.')
+    if ($SwitchApplies) { return $true }
     $interactive = $false
     try { $interactive = [Environment]::UserInteractive -and -not [Console]::IsInputRedirected } catch {}
     if (-not $interactive) {
-        Write-Host '    Not interactive: pass -AllowUnlockedBackup to use it.'
+        Write-Host ('    ' + $NonInteractiveNote)
         return $false
     }
     $ans = Read-Host '    Type YES to use it anyway'
@@ -97,10 +98,27 @@ function _Confirm-Untrusted {
 }
 
 function _Read-SmallText {
+    # At most 32 MB from one regular file; $null if missing, a link or larger.
     param([string]$Path)
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
-    if ((Get-Item -LiteralPath $Path -Force).Length -gt 32MB) { return $null }
-    return [System.IO.File]::ReadAllText($Path)
+    $it = Get-Item -LiteralPath $Path -Force
+    if ((([int]$it.Attributes) -band ([int][System.IO.FileAttributes]::ReparsePoint)) -ne 0) { return $null }
+    $cap = 32MB
+    $fs = $null
+    try {
+        $fs = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
+        $buf = New-Object byte[] ($cap + 1)
+        $n = 0
+        while ($n -lt $buf.Length) {
+            $k = $fs.Read($buf, $n, $buf.Length - $n)
+            if ($k -le 0) { break }
+            $n += $k
+        }
+    } catch { return $null } finally { if ($fs) { $fs.Dispose() } }
+    if ($n -gt $cap) { return $null }
+    $ms = New-Object System.IO.MemoryStream -ArgumentList $buf, 0, $n
+    $sr = New-Object System.IO.StreamReader -ArgumentList $ms, $true
+    try { return $sr.ReadToEnd() } finally { $sr.Dispose() }
 }
 
 function _Stage-Copy {
@@ -124,7 +142,7 @@ else { $roots = @((Get-OAiBackupHome), (Join-Path $env:USERPROFILE '0AI_Backups'
 # Default: the admin-only home (%ProgramData%\0AI_Backups\<SID>, v2.14.2+),
 # then the old per-profile folder (v2.14.1 and earlier).
 if (-not $BackupDir) {
-    $candidates = _Get-BackupFolders -Roots $roots
+    $candidates = @(_Get-BackupFolders -Roots $roots)
     if ($candidates.Count -eq 0) {
         Write-Host ('[!] No backup with a run.json found in: {0}' -f ($roots -join ', ')) -ForegroundColor Red
         exit 1
@@ -154,11 +172,12 @@ Write-Host ('[+] Using backup folder: {0}' -f $BackupDir)
 # values, which Revert would restore with admin rights.
 $lock = Test-OAiBackupDirLocked -Path $BackupDir
 $lockNote = ''
+$selectedUntrusted = $false
 if ($lock.Missing) {
     Write-Host ('[!] Backup folder not found: {0}' -f $BackupDir) -ForegroundColor Red
     exit 1
 }
-$BackupDir    = (Get-Item -LiteralPath $BackupDir -Force).FullName
+$BackupDir    = (Get-Item -LiteralPath $BackupDir -Force).FullName.TrimEnd('\', '/')
 $origDir      = $BackupDir
 $selectedName = Split-Path -Leaf $BackupDir
 if (Test-Path -LiteralPath (Join-Path $origDir 'revert.log') -PathType Leaf) {
@@ -172,7 +191,7 @@ if (-not $lock.Ok) {
     Write-Host ('[!] This backup is not protected against changes by programs without admin rights ({0}).' -f $lock.Reason) -ForegroundColor Yellow
     Write-Host '    Backups made by 0AI v2.14.1 or earlier are like this, as is any backup changed since.'
     Write-Host '    If a program altered it, Revert would restore the altered values. Use it only if you trust this PC.'
-    if (-not (_Confirm-Untrusted)) {
+    if (-not (_Confirm-Untrusted -SwitchApplies ([bool]$AllowUnlockedBackup))) {
         Write-Host '[i] Revert cancelled; nothing changed.'
         exit 1
     }
@@ -186,6 +205,7 @@ if (-not $lock.Ok) {
         exit 1
     }
     $BackupDir = $staged
+    $selectedUntrusted = $true
     $lockNote = ('[!] Untrusted backup {0} used after confirmation ({1}); working from admin-only copy {2}' -f $origDir, $lock.Reason, $staged)
     Write-Host ('[i] Working from an admin-only copy: {0}' -f $staged)
 }
@@ -288,6 +308,10 @@ $needIds = @(foreach ($r in $results) {
         $rid = [string]$r.Id
         if (-not $rid -or -not $policyMap.ContainsKey($rid)) { continue }
         if (@('Registry', 'Service') -notcontains $policyMap[$rid].Kind) { continue }
+        # Only policies Apply skipped (already in place). An 'error' with no
+        # snapshot never changed anything, and an 'ok' whose snapshot is gone
+        # should not be replaced by an older run's value.
+        if ([string]$r.Status -ne 'skipped') { continue }
         $bf = ''
         if ($r.PSObject.Properties.Name -contains 'BackupFile') { $bf = [string]$r.BackupFile }
         if (-not (Resolve-OAiBackupFile -BackupDir $BackupDir -Recorded $bf)) { $rid }
@@ -302,7 +326,7 @@ if ($needIds.Count -gt 0) {
             $src = _Read-SmallText (Join-Path $d.FullName 'source.txt')
             $log = _Read-SmallText (Join-Path $d.FullName 'revert.log')
             if ($src -and $log) {
-                $key = $src.Trim().ToLowerInvariant()
+                $key = $src.Trim().TrimEnd('\', '/').ToLowerInvariant()
                 if (-not $copyReverts.ContainsKey($key)) { $copyReverts[$key] = @() }
                 $copyReverts[$key] = @($copyReverts[$key]) + @(Get-OAiRevertedIds -LogText $log)
             }
@@ -326,42 +350,63 @@ if ($needIds.Count -gt 0) {
             RevertedIds = $reverted
         }
     }
-    $older = @(foreach ($d in (_Get-BackupFolders -Roots $roots)) {
-            if ([string]::CompareOrdinal($d.Name, $selectedName) -ge 0) { continue }
-            if ($d.FullName -eq $origDir) { continue }
+    # Older than what? The selected folder's timestamp, or for a working
+    # copy the timestamp of the folder it was copied from.
+    $srcOfSelected = ''
+    if ($selectedName -like 'imported-*') { $srcOfSelected = _Read-SmallText (Join-Path $BackupDir 'source.txt') }
+    if ($selectedUntrusted) { $srcOfSelected = $origDir }
+    $cutoff = Get-OAiCutoffName -SelectedName $selectedName -SourcePath $srcOfSelected
+    $exclude = @($origDir, $BackupDir)
+    if ($srcOfSelected) { $exclude += $srcOfSelected.Trim() }
+    $olderFolders = Select-OAiOlderFolders -Folders (_Get-BackupFolders -Roots $roots) -Cutoff $cutoff -Exclude $exclude
+    $older = @(foreach ($d in $olderFolders) {
             $chk = Test-OAiBackupDirLocked -Path $d.FullName
             if ($chk.IsLink -or $chk.Missing) { continue }
             $o = _Load-Older -Name $d.Name -Dir $d.FullName -Source $d.FullName -Trusted $chk.Ok
             if ($o) { $o }
         })
+    # First plan: untrusted runs may supply snapshots (which leads to the
+    # question below) but cannot stop a search (see OAi.BackupHistory.psm1).
     $plan = Select-OAiFallbackSnapshots -Ids $needIds -Older $older
-    $untrusted = @($older | Where-Object { -not $_.Trusted -and @($plan.Values | ForEach-Object { $_.Dir }) -contains $_.Dir })
+    $untrustedDirs = @($older | Where-Object { -not $_.Trusted } | ForEach-Object { $_.Dir })
+    $fromUntrusted = @($plan.Keys | Where-Object { $untrustedDirs -contains $plan[$_].Dir })
+    $untrusted = @($older | Where-Object { -not $_.Trusted -and @($fromUntrusted | ForEach-Object { $plan[$_].Dir }) -contains $_.Dir })
     if ($untrusted.Count -gt 0) {
-        Write-Host ('[!] {0} setting(s) have no snapshot in this backup. Their earlier values are in older' -f $plan.Count) -ForegroundColor Yellow
+        Write-Host ('[!] {0} setting(s) have no snapshot in this backup. Their earlier values are only in older' -f $fromUntrusted.Count) -ForegroundColor Yellow
         Write-Host '    backups that programs without admin rights could have changed (v2.14.1 or earlier):'
         foreach ($u in $untrusted) { Write-Host ('      {0}' -f $u.Source) }
-        Write-Host '    Without them, those settings are deleted (registry) or left as they are (services).'
-        $useOld = _Confirm-Untrusted
+        Write-Host '    Without them, those registry values are deleted and those services are left as they are.'
+        # -AllowUnlockedBackup covers these only when the chosen backup was
+        # itself an unprotected one the switch was passed for.
+        $useOld = _Confirm-Untrusted -SwitchApplies ([bool]$AllowUnlockedBackup -and $selectedUntrusted) -NonInteractiveNote 'Not interactive: older unprotected backups are not used.'
         $older = @(foreach ($o in $older) {
                 if ($o.Trusted) { $o; continue }
-                if (-not $useOld -or @($untrusted | ForEach-Object { $_.Dir }) -notcontains $o.Dir) {
-                    # Not read from; keep it in the list only for its reverts.
-                    [pscustomobject]@{ Name = $o.Name; Dir = $o.Dir; Source = $o.Source; Trusted = $false; Results = @(); Files = @(); RevertedIds = $o.RevertedIds }
-                    continue
-                }
+                $stub = [pscustomobject]@{ Name = $o.Name; Dir = $o.Dir; Source = $o.Source; Trusted = $false; Results = @(); Files = @(); RevertedIds = @() }
+                if (-not $useOld -or @($untrusted | ForEach-Object { $_.Dir }) -notcontains $o.Dir) { $stub; continue }
+                $c = $null
                 try {
                     $copy = _Stage-Copy -Source $o.Source
                     $c = _Load-Older -Name $o.Name -Dir $copy -Source $o.Source -Trusted $true
-                    if ($c) { $c }
                 } catch {
-                    ('[!] Could not copy older backup {0}: {1}' -f $o.Source, $_.Exception.Message) | Out-File -Encoding UTF8 -FilePath $logFile -Append
+                    $m = ('[!] Could not copy older backup {0}: {1}' -f $o.Source, $_.Exception.Message)
+                    Write-Host $m -ForegroundColor Yellow
+                    $m | Out-File -Encoding UTF8 -FilePath $logFile -Append
+                }
+                if ($c) {
+                    $c
+                } else {
+                    # Not usable after all; its own revert still counts, as
+                    # the user accepted this folder.
+                    $stub.Trusted = $true
+                    $stub.RevertedIds = $o.RevertedIds
+                    $stub
                 }
             })
         $plan = Select-OAiFallbackSnapshots -Ids $needIds -Older $older
     }
     $fallback = $plan
     if ($fallback.Count -gt 0) {
-        $m = ('[+] {0} setting(s) restored from older backups (no snapshot in this one).' -f $fallback.Count)
+        $m = ('[+] {0} setting(s) will be restored from older backups (no snapshot in this one).' -f $fallback.Count)
         Write-Host $m
         $m | Out-File -Encoding UTF8 -FilePath $logFile -Append
     }
