@@ -1,13 +1,21 @@
 # 0AI - Windows Hardening Kit
 
 ### Windows 11 Privacy, AI Disablement & Security Hardening
-**Version:** `v2.12.0`
+**Version:** `v2.13.0`
 
-**Supported baselines:** Windows 11 24H2 (OS Build **26100.9550+**) and 25H2
-(OS Build **26200.9550+**), through the **September 22 2026 preview KB5124010**
-(which builds on the September Patch Tuesday KB5124008). Earlier builds still
-work but the 25H2-specific switches (e.g. File Explorer AI Actions,
-IsoEnvBroker, RemoveMicrosoftCopilotApp) are no-ops.
+**Supported baselines:** Windows 11 25H2 (OS Build **26200.9711+**) and 26H2
+(OS Build **26300.9711+**), through the **October 13 2026 Patch Tuesday
+KB5127648**. 24H2 (26100.9711+) still works, but **24H2 Home and Pro reached
+end of support on October 13 2026** — KB5127648 is their last update; only
+Enterprise and Education 24H2 keep receiving fixes (until October 12 2027).
+Earlier builds still work but the 25H2-specific switches (e.g. File Explorer
+AI Actions, IsoEnvBroker, RemoveMicrosoftCopilotApp) are no-ops.
+
+**Edition note.** Microsoft's WindowsAI policy reference marks several
+policies the kit writes as **not applying to Pro** — `DisableSettingsAgent`,
+`DisableRecallDataProviders`, `AllowRecallExport`, and (per its edition table)
+`RemoveMicrosoftCopilotApp`. On Pro those writes are harmless no-ops, not
+failures; they take effect on Enterprise / Education.
 
 **Runs correctly on every Windows display language.** All string matching is
 pinned to the invariant culture — see *Localization* below for why that
@@ -80,6 +88,68 @@ the manifest. No changes.
 reinstalled by `Revert.ps1`. Opt in only if you're comfortable with that.
 
 ---
+
+## What's new in v2.13.0
+
+Covers **KB5127648** (October 13 2026 Patch Tuesday — builds 26100.9711 /
+26200.9711 / 26300.9711) and the arrival of **Windows 11 26H2**.
+
+- **Baseline bumped** to 25H2 26200.9711 and **26H2 26300.9711**. 26H2 is an
+  enablement package on the same servicing branch as 25H2, so every
+  `MinBuild = 26200` gate already applies on 26300 — nothing needed changing
+  to support it.
+- **24H2 Home / Pro end of support** (October 13 2026) noted in the baseline.
+  KB5127648 is their final update. Upgrade to 25H2 or 26H2.
+- **Manifest audited against Microsoft's WindowsAI Policy CSP reference.**
+  Every WindowsAI entry was checked for the documented registry name *and*
+  the documented scope (Device = HKLM, User = HKCU). Corrections:
+  - **Removed `AI.WindowsAI.DisableSettingsAgenticSearch`.** No such policy
+    exists. It was carried over from the v2.2 batch file and labelled
+    `Documented` the whole time; the real control for "Disable Settings
+    agentic search experience" is `DisableSettingsAgent`, which the kit
+    already writes. Older backups that recorded it will show one harmless
+    `[warn] policy not in current manifest` on Revert, and the inert value
+    may remain in the registry — nothing reads it.
+  - **`AI.WindowsCopilot.SetCopilotHardwareKey` relabelled `Community`.**
+    The policy is documented, but its documented value is an app AUMID (the
+    app the key should open). `"0"` is a community-reported value, not a
+    Microsoft one. v2.12.0 labelled it `Documented` — that was wrong.
+  - **New `AI.WindowsAI.DisableRecallDataProviders.HKCU`.** Microsoft
+    documents this policy at **User scope only**; the kit only ever wrote
+    HKLM. Same class of scope gap as the v2.8 and v2.11.0 fixes. The HKLM
+    entry stays as a `BestEffort` mirror.
+  - **`AI.WindowsCopilot.TurnOffWindowsCopilot.HKLM` → `BestEffort`.**
+    Documented at User scope only, and Microsoft now marks the policy
+    **deprecated**. The old description's claim that "Pro SKUs ignore HKCU on
+    24H2+" had no source and is gone.
+  - **`AI.WindowsCopilot.RemoveMicrosoftCopilotApp.HKLM` → `Documented`.**
+    Microsoft now documents Device scope for it, so the HKLM entry is no
+    longer a guess.
+  - **`AI.IsoEnvBroker.Enabled` / `AI.Service.IsoEnvBroker` → `Community`.**
+    Microsoft documents the *Experimental agentic features* toggle but not
+    this service or its `Enabled` value; both came from third-party guides.
+- **`Snapshot-AIShellVerbs.ps1`** no longer reports five Paint / Photos
+  values (`DisableRemoveBackground`, `DisableGenerativeErase`,
+  `DisableAIEditing`, `DisableBlurBackground`, `DisableEraseObjects`) as
+  "kit-managed keys" — those were the non-existent policies removed in v2.5.
+- **Manifest header** now defines what each `Confidence` label means, so the
+  labels are checkable rather than decorative.
+
+### Reviewed and deliberately *not* added
+
+- **`DisableCopilotPinScreen`** (suppresses the Microsoft 365 Copilot setup
+  guide at sign-in) and **`ConfigureAgentConnectors = 2`** (force-disable AI
+  agent connectors). Both are real, documented controls — but Enterprise /
+  Education only, still marked *Windows Insider Preview*, and Microsoft has
+  not published a registry key for the first. Revisit when they reach GA.
+- **`EnableWindowsBackup`.** 26H2 turns Windows settings backup on by default
+  for commercial devices. The disable policy is documented, under
+  `HKLM\Software\Policies\Microsoft\Windows\SettingSync`, but it is
+  ADMX-backed and the registry data written for "Disabled" isn't published,
+  so there is no verified value to write.
+- **26H2 security features** — Administrator protection (see *Optional
+  hardening*), built-in Sysmon, Smart App Control toggle: all off by default
+  and all deliberate choices for the user, not a kit default.
 
 ## What's new in v2.12.0
 
