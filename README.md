@@ -149,9 +149,24 @@ Administrators is a candidate for a future release.
 - **Unknown Ids are visible.** An Id in `run.json` that is neither live nor
   retired now prints a `[warn] … skipped` line on the console, not only in
   `revert.log`.
+- **Plain Revert skips folders without a `run.json`.** A `-WhatIf` dry run or
+  a rejected `-Select` list leaves a backup folder holding only `apply.log`;
+  Revert used to pick that folder as the newest and stop. It now uses the
+  newest folder that has a `run.json`.
+- **Legacy `.reg` backups that hold the kit's own value are not trusted.**
+  v2.9.3 and earlier wrote one file per registry key and overwrote it for
+  each policy on that key, so for every policy but the last on a shared key
+  the file already held the value the kit set. Revert used to "restore" that
+  value. It now spots the case, deletes the value best-effort and warns, the
+  same as when no backup exists.
+- **`ExpandString` values are backed up unexpanded**, so a restore writes
+  back `%SystemRoot%`-style text and not the expanded path.
 
 ### Apply
 
+- **`-Select A,B` works from `0AI_Apply.cmd`.** `powershell -File` passes a
+  comma list as one string; Apply now splits it, so the Quick Start example
+  runs both Ids.
 - **`-Select` fails fast.** Unknown Ids make Apply print an error and
   `exit 2` without applying anything, also under `-WhatIf`. A retired Id's
   error names its replacement.

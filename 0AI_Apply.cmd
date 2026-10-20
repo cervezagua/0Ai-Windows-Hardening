@@ -1,6 +1,6 @@
 @echo off
 setlocal EnableExtensions
-title 0AI v2.3 - Apply
+title 0AI - Apply
 
 net session >nul 2>&1
 if %errorlevel% NEQ 0 (

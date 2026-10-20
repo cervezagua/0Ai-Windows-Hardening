@@ -1,5 +1,5 @@
 #
-# 0AI v2.3 - Revert.ps1
+# 0AI v2.14.0 - Revert.ps1
 #
 # Finds the newest backup directory under $env:USERPROFILE\0AI_Backups (or a
 # user-specified -BackupRoot), reads run.json, and calls Undo-PolicyAction for
@@ -66,11 +66,14 @@ if (-not $BackupDir) {
         Write-Host ('[!] No backup folder found at {0}' -f $BackupRoot) -ForegroundColor Red
         exit 1
     }
+    # Dry runs (-WhatIf) and rejected -Select lists leave a folder with only
+    # apply.log; skip those so they don't hide the last real run.
     $latest = Get-ChildItem -Path $BackupRoot -Directory -ErrorAction SilentlyContinue |
+              Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'run.json') -PathType Leaf } |
               Sort-Object LastWriteTime -Descending |
               Select-Object -First 1
     if (-not $latest) {
-        Write-Host '[!] No backup subfolders found.' -ForegroundColor Red
+        Write-Host '[!] No backup subfolders with a run.json found.' -ForegroundColor Red
         exit 1
     }
     $BackupDir = $latest.FullName

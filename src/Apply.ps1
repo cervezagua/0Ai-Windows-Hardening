@@ -151,7 +151,10 @@ try {
 } catch {}
 
 # ---- Validate -Select ----
-if ($Select -and $Select.Count -gt 0) {
+# 'powershell -File' (how 0AI_Apply.cmd starts us) passes "-Select A,B" as
+# the single string 'A,B', so split on commas here.
+$Select = @($Select | ForEach-Object { [string]$_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+if ($Select.Count -gt 0) {
     $retired = @()
     try {
         $retired = Get-OAiRetiredPolicies

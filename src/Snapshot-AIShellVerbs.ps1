@@ -198,7 +198,7 @@ foreach ($r in $retired) {
     if ($null -eq $cur) { continue }
     $leftovers++
     Write-Host ('  {0}  (retired in {1})' -f $r.Id, $r.RetiredIn)
-    Write-Host ('             {0}:\{1}!{2} = {3}  - 0AI_Revert removes it when reverting the backup that recorded this Id' -f $r.Hive, $r.Key, $r.Value, ((@($cur) | ForEach-Object { [string]$_ }) -join ','))
+    Write-Host ('             {0}:\{1}!{2} = {3}  - removed by 0AI_Revert -BackupDir <the backup that recorded this Id>' -f $r.Hive, $r.Key, $r.Value, ((@($cur) | ForEach-Object { [string]$_ }) -join ','))
 }
 if ($leftovers -eq 0) { Write-Host '  (none)' }
 

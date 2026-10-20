@@ -255,7 +255,7 @@ function Backup-PolicyState {
                     $kind = $item.GetValueKind($Policy.Value)
                     $snap.Existed = $true
                     $snap.Type    = $kind.ToString()
-                    $snap.Data    = $item.GetValue($Policy.Value)
+                    $snap.Data    = $item.GetValue($Policy.Value, $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
                 } catch {
                     # key or value absent -> Existed stays $false
                 }
@@ -600,16 +600,16 @@ function Undo-PolicyAction {
                     $snap = Get-Content -Raw -LiteralPath $bf | ConvertFrom-Json
                     if (-not ((_Same-RegName $snap.Hive $Policy.Hive) -and (_Same-RegName $snap.Key $Policy.Key) -and (_Same-RegName $snap.Value $Policy.Value))) {
                         $sw.Stop()
-                        return (_New-Result -Id $Policy.Id -Status 'warn' -DurationMs $sw.ElapsedMilliseconds -Message ('snapshot {0} does not match {1}\{2}!{3} - not restored' -f $BackupFile, $Policy.Hive, $Policy.Key, $Policy.Value))
+                        return (_New-Result -Id $Policy.Id -Status 'warn' -DurationMs $sw.ElapsedMilliseconds -Message ('snapshot {0} does not match {1}\{2}!{3} - not restored' -f $bf, $Policy.Hive, $Policy.Key, $Policy.Value))
                     }
                     if ($snap.Existed -isnot [bool]) {
                         $sw.Stop()
-                        return (_New-Result -Id $Policy.Id -Status 'warn' -DurationMs $sw.ElapsedMilliseconds -Message ('snapshot {0} has no valid Existed flag - not restored' -f $BackupFile))
+                        return (_New-Result -Id $Policy.Id -Status 'warn' -DurationMs $sw.ElapsedMilliseconds -Message ('snapshot {0} has no valid Existed flag - not restored' -f $bf))
                     }
                     $type = [string]$snap.Type
                     if ($snap.Existed -and @('String','ExpandString','DWord','QWord','Binary','MultiString') -notcontains $type) {
                         $sw.Stop()
-                        return (_New-Result -Id $Policy.Id -Status 'warn' -DurationMs $sw.ElapsedMilliseconds -Message ('snapshot {0} has unsupported type "{1}" - not restored' -f $BackupFile, $type))
+                        return (_New-Result -Id $Policy.Id -Status 'warn' -DurationMs $sw.ElapsedMilliseconds -Message ('snapshot {0} has unsupported type "{1}" - not restored' -f $bf, $type))
                     }
                     $path = Join-Path (_Resolve-Hive $Policy.Hive) $Policy.Key
                     if ($snap.Existed) {
@@ -637,6 +637,16 @@ function Undo-PolicyAction {
                     $sw.Stop()
                     switch ($r.Status) {
                         'found' {
+                            # v2.9.3 and earlier exported one file per key and
+                            # overwrote it for each policy on that key, so an
+                            # earlier policy's file can hold the value the kit
+                            # itself set. Policies already at Data were skipped
+                            # without a backup, so this value cannot be the
+                            # pre-apply one: treat as no backup.
+                            if ($r.Type -eq $Policy.Type -and [string]$r.Data -eq [string]$Policy.Data) {
+                                try { Remove-ItemProperty -LiteralPath $path -Name $Policy.Value -ErrorAction Stop } catch {}
+                                return (_New-Result -Id $Policy.Id -Status 'warn' -DurationMs $sw.ElapsedMilliseconds -Message ("legacy backup holds the kit's own value (taken after an earlier policy on this key); deleted {0}!{1} best-effort" -f $Policy.Key, $Policy.Value))
+                            }
                             _Ensure-RegistryKey -Hive $Policy.Hive -Key $Policy.Key
                             New-ItemProperty -LiteralPath $path -Name $Policy.Value -Value $r.Data -PropertyType $r.Type -Force -ErrorAction Stop | Out-Null
                             return (_New-Result -Id $Policy.Id -Status 'ok' -DurationMs $sw.ElapsedMilliseconds -Message ("restored {0}!{1} = {2} (legacy backup)" -f $Policy.Key, $Policy.Value, $r.Data))
