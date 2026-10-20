@@ -137,11 +137,14 @@ Describe '0AI manifest schema' {
                 ForEach-Object { '{0} (Confidence={1})' -f $_.Id, $_.Confidence })
             $bad.Count | Should -Be 0 -Because "Confidence must be one of $($ValidConfidence -join '/'); offenders: $($bad -join ', ')"
         }
-        It 'every policy has an https DocUrl' {
+        It 'every policy has an https DocUrl (Community may leave it empty: no source found)' {
             $bad = @($script:Policies | Where-Object {
-                    -not ($_.DocUrl -is [string] -and $_.DocUrl.StartsWith('https://'))
-                } | ForEach-Object { '{0} (DocUrl={1})' -f $_.Id, $_.DocUrl })
-            $bad.Count | Should -Be 0 -Because "offenders: $($bad -join ', ')"
+                    $url = $_.DocUrl
+                    $isHttps = ($url -is [string] -and $url.StartsWith('https://'))
+                    $emptyOk = ($_.Confidence -eq 'Community' -and $url -is [string] -and $url -eq '')
+                    -not ($isHttps -or $emptyOk)
+                } | ForEach-Object { '{0} (Confidence={1}, DocUrl={2})' -f $_.Id, $_.Confidence, $_.DocUrl })
+            $bad.Count | Should -Be 0 -Because "Documented/BestEffort need a primary-source https DocUrl; offenders: $($bad -join ', ')"
         }
     }
 
