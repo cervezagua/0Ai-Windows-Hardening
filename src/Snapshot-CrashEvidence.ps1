@@ -175,10 +175,17 @@ try {
 
 # --------------------------------------------------------------- kit history
 _Print-Header '0AI run history (for timeline correlation)'
-$bk = Join-Path $env:USERPROFILE '0AI_Backups'
-if (Test-Path $bk) {
-    Get-ChildItem -Path $bk -Directory -ErrorAction SilentlyContinue |
-        Sort-Object Name -Descending | Select-Object -First 10 | ForEach-Object {
+# v2.14.2+: %ProgramData%\0AI_Backups\<SID>\<stamp>; earlier: %USERPROFILE%\0AI_Backups
+$bkRoots = @((Join-Path $env:USERPROFILE '0AI_Backups'))
+$pdRoot  = Join-Path $env:ProgramData '0AI_Backups'
+if (Test-Path -LiteralPath $pdRoot) {
+    $bkRoots += @(Get-ChildItem -LiteralPath $pdRoot -Directory -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+}
+$runs = @(foreach ($r in $bkRoots) {
+        if (Test-Path -LiteralPath $r) { Get-ChildItem -LiteralPath $r -Directory -Force -ErrorAction SilentlyContinue }
+    })
+if ($runs.Count -gt 0) {
+    $runs | Sort-Object Name -Descending | Select-Object -First 10 | ForEach-Object {
             Write-Host ('  {0}' -f $_.Name)
         }
     Write-Host ''

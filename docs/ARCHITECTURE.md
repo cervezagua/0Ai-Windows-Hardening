@@ -214,13 +214,15 @@ serialized to `run.json`.
 
 `Revert.ps1` then:
 
-1. Finds the newest `0AI_Backups/<timestamp>` folder that has a `run.json`,
-   preferring admin-only ones (Apply locks each new folder to
-   Administrators/SYSTEM, read-only for the user, via `OAi.BackupAcl.psm1`).
-2. Checks that the folder and everything in it is still admin-only. If not
-   (v2.14.1-or-earlier backups), it asks for a typed `YES` or
-   `-AllowUnlockedBackup`, then locks the folder; a folder containing a
-   junction or symlink is refused outright. Then reads `run.json`.
+1. Finds the newest backup with a `run.json`: first under
+   `%ProgramData%\0AI_Backups\<account SID>` (v2.14.2+, where Apply creates
+   each folder admin-only in one step via `OAi.BackupAcl.psm1`), then the old
+   `%USERPROFILE%\0AI_Backups`, preferring trusted ones.
+2. Trusts a backup only if the folder, its files and every folder above it
+   are safe from changes, renames and replacement by non-admin accounts.
+   Otherwise (v2.14.1-or-earlier backups) it asks for a typed `YES` or
+   `-AllowUnlockedBackup` and works from an admin-only copy; a backup that is
+   or contains a junction or symlink is refused. Then reads `run.json`.
 3. For each result, looks up the matching policy record in the current
    manifest, or else in `src/retired/retired.psd1`. An Id in neither is
    skipped with a `[warn]` on the console and in `revert.log`.

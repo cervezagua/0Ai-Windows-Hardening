@@ -69,8 +69,9 @@ profile; the kit warns when this happens but does not redirect the writes.
 2. Select **Run as Administrator**
 3. **Reboot**
 
-Revert finds the most recent backup folder under
-`%USERPROFILE%\0AI_Backups`, reads `run.json`, and walks each action
+Revert finds the most recent trusted backup under
+`%ProgramData%\0AI_Backups\<account SID>` (v2.14.2+; older backups in
+`%USERPROFILE%\0AI_Backups` need a typed `YES`), reads `run.json`, and walks each action
 backwards through the same dispatcher. It does **not** reinstall removed
 Appx packages (matches v2.2 behaviour).
 
@@ -100,33 +101,38 @@ reinstalled by `Revert.ps1`. Opt in only if you're comfortable with that.
 
 ## What's new in v2.14.2
 
-**Backup folders are admin-only.** This closes the known limitation from
-v2.14.0. Revert runs with admin rights and restores whatever "previous"
-values a backup holds, and backups live under `%USERPROFILE%`, where any
-program you run can write. Now:
+**Backups are admin-only, and Revert checks them.** This closes the known
+limitation from v2.14.0. Revert runs with admin rights and restores whatever
+"previous" values a backup holds. Backups used to live in
+`%USERPROFILE%\0AI_Backups`, where any program you run can write. Locking the
+folder alone would not have been enough: in your own profile a program can
+rename a locked folder away and put a forged one in its place.
 
-- **Apply** creates each `0AI_Backups\<timestamp>` folder fresh (never
-  reusing an existing one) and, before writing anything to it, locks it:
-  owner Administrators, full control for SYSTEM and Administrators,
-  **read-only for you**, nothing inherited from your profile. Everything
-  written into it inherits that. If the drive doesn't support permissions
-  (FAT, some network shares), Apply warns and carries on.
-- **Revert** checks that the backup folder and every file in it is still
-  writable only by Administrators, SYSTEM or TrustedInstaller before using
-  it.
-  - With no `-BackupDir`, it picks the newest admin-only backup, so a newer
-    folder some other program dropped in `0AI_Backups` doesn't win.
-  - Backups made by v2.14.1 or earlier aren't admin-only. Revert explains
-    this and asks you to type `YES` to use one anyway (non-interactive runs
-    need `-AllowUnlockedBackup`); it then locks the folder before reading
-    it.
-  - A backup folder that is, or contains, a junction or symbolic link is
-    never used.
-- New module `src/module/OAi.BackupAcl.psm1`; its permission decision has
-  its own Pester tests (`tests/BackupAcl.Tests.ps1`, 38 tests in total).
-
-Programs without admin rights can still rename or delete backup folders,
-but not change what is in them.
+- **New location: `%ProgramData%\0AI_Backups\<your account SID>\<timestamp>`**
+  (usually `C:\ProgramData\…`, a hidden folder). Standard users can create
+  folders under ProgramData but cannot rename or delete anyone else's.
+  Each backup folder is owned by Administrators, with full control for SYSTEM
+  and Administrators and **read-only for you**, and it is created that way in
+  one step, so it is never open to other programs, even briefly. At the end of
+  the run Apply makes sure Administrators own every file and re-checks the
+  folder.
+- **Revert trusts a backup only if** the folder, every file in it and every
+  folder above it are protected against changes by programs without admin
+  rights.
+  - With no `-BackupDir`, it uses the newest trusted backup (new location
+    first, then the old `%USERPROFILE%\0AI_Backups`) and lists any newer
+    backups it skipped.
+  - Older backups (v2.14.1 and earlier) aren't trusted. Revert explains why and
+    asks you to type `YES` (non-interactive runs need `-AllowUnlockedBackup`).
+    It then copies the backup into a new admin-only folder and works only from
+    the copy, so nothing can swap files while it runs.
+  - A backup that is or contains a junction or symbolic link is never used.
+- **`-BackupRoot`** still works. If Apply can't create an admin-only folder
+  there (FAT / exFAT drives, some network shares) it stops before changing
+  anything, unless you pass `-AllowUnlockedBackup`. It also warns when that
+  location lets other programs rename backups.
+- New module `src/module/OAi.BackupAcl.psm1`; the permission rules have their
+  own Pester tests (`tests/BackupAcl.Tests.ps1`, 42 tests in total).
 
 ## What's new in v2.14.1
 
@@ -179,7 +185,7 @@ can still change the recorded *previous* value of a setting the kit manages,
 for example so that Revert switches RDP back on. Keep the kit folder and its
 backups somewhere only you control. Locking the backup folder down to
 Administrators is a candidate for a future release. (Fixed in v2.14.2:
-backup folders are admin-only and Revert checks them.)
+backups moved to an admin-only location and Revert checks them.)
 
 ### Revert
 
@@ -1080,15 +1086,16 @@ execution, `-WhatIf`, structured revert, and Pester schema tests.
 
 Before making changes, Apply:
 - Creates a best-effort **System Restore Point**
-- Writes per-policy backup snapshots to a new
-  `%USERPROFILE%\0AI_Backups\<timestamp>\` folder, locked to Administrators
-  and SYSTEM (read-only for you) before anything is written to it
+- Writes per-policy backup snapshots to a new admin-only folder,
+  `%ProgramData%\0AI_Backups\<account SID>\<timestamp>\` (read-only for you;
+  before v2.14.2: `%USERPROFILE%\0AI_Backups\<timestamp>\`)
 - Saves `apply.log`, `run.json`, and `verification.txt`
 
 Revert:
-- Reads the newest admin-only backup's `run.json`. A backup that programs
-  without admin rights could have modified (v2.14.1 or earlier) needs a
-  typed `YES` or `-AllowUnlockedBackup`; one containing a link is refused
+- Reads the newest trusted backup's `run.json`. A backup that programs
+  without admin rights could have changed (v2.14.1 or earlier) needs a typed
+  `YES` or `-AllowUnlockedBackup`, and is then copied to an admin-only folder
+  first; one containing a link is refused
 - Restores registry values from per-value JSON snapshots. The value's
   location always comes from the manifest; a snapshot for a different key,
   or with a non-registry type, is refused. Backup files are looked up by
