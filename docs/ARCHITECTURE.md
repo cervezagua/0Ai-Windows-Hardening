@@ -112,6 +112,7 @@ guarded by `$PSVersionTable.PSVersion.Major -ge 7` checks. None are required.
 |   |   +-- retired.psd1  Ids older versions applied; Revert can still undo them
 |   +-- module/
 |       +-- OAi.Manifest.psm1     shared manifest + retired-list loader, -Select check
+|       +-- OAi.BackupAcl.psm1    lock backup folders admin-only; Revert's check
 |       +-- OAi.Engine.psm1       primitives (Invoke/Test/Backup/Undo)
 |       +-- OAi.Runner.psm1       orchestration + parallelism
 |       +-- OAi.UI.Console.psm1   live progress display
@@ -213,8 +214,15 @@ serialized to `run.json`.
 
 `Revert.ps1` then:
 
-1. Finds the newest `0AI_Backups/<timestamp>` folder.
-2. Reads `run.json`.
+1. Finds the newest backup with a `run.json`: first under
+   `%ProgramData%\0AI_Backups\<account SID>` (v2.14.2+, where Apply creates
+   each folder admin-only in one step via `OAi.BackupAcl.psm1`), then the old
+   `%USERPROFILE%\0AI_Backups`, preferring trusted ones.
+2. Trusts a backup only if the folder, its files and every folder above it
+   are safe from changes, renames and replacement by non-admin accounts.
+   Otherwise (v2.14.1-or-earlier backups) it asks for a typed `YES` or
+   `-AllowUnlockedBackup` and works from an admin-only copy; a backup that is
+   or contains a junction or symlink is refused. Then reads `run.json`.
 3. For each result, looks up the matching policy record in the current
    manifest, or else in `src/retired/retired.psd1`. An Id in neither is
    skipped with a `[warn]` on the console and in `revert.log`.
@@ -223,8 +231,8 @@ serialized to `run.json`.
      (value did not exist before → delete it). Legacy `.reg` backups
      (v2.9.3 and earlier) are read in memory for that one value only;
      `reg import` is never run. The location always comes from the manifest
-     or retired list, never from the backup, because the backup folder is
-     user-writable and Revert runs elevated
+     or retired list, never from the backup, which Revert reads with admin
+     rights
    - Service → restore startup type from JSON snapshot
    - DefenderPref → restore preference from run-snapshot JSON
    - DefenderAsr → `Remove-MpPreference`

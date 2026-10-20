@@ -1,5 +1,5 @@
 #
-# 0AI v2.14.1 - Apply.ps1
+# 0AI v2.14.2 - Apply.ps1
 #
 # Entry point for applying privacy / AI-disablement / hardening policies.
 #
@@ -7,7 +7,8 @@
 #   -Categories <string[]>  Default: AI,PRIV,HARD,AUDIT  (DEBLOAT excluded by default)
 #   -WhatIf                 Show plan view and exit without changes
 #   -Select <string[]>      Run only named policy IDs (overrides categories)
-#   -BackupRoot <string>    Default: $env:USERPROFILE\0AI_Backups
+#   -BackupRoot <string>    Default: $env:ProgramData\0AI_Backups\<account SID>
+#   -AllowUnlockedBackup    Continue if the backup folder cannot be made admin-only
 #
 
 [CmdletBinding()]
@@ -15,7 +16,10 @@ param(
     [string[]]$Categories = @('AI','PRIV','HARD','AUDIT'),
     [switch]$WhatIf,
     [string[]]$Select = @(),
-    [string]$BackupRoot = ''
+    [string]$BackupRoot = '',
+    # Continue when the backup folder cannot be made admin-only (FAT drive,
+    # some network shares). Revert will then ask before trusting it.
+    [switch]$AllowUnlockedBackup
 )
 
 # StrictMode disabled for hashtable-heavy manifest handling
@@ -67,14 +71,66 @@ $manifestDir = Join-Path $thisDir 'manifest'
 # Get-OAiVersion, so it must be loaded before any other work.
 Import-Module (Join-Path $moduleDir 'OAi.Version.psm1') -Force
 Import-Module (Join-Path $moduleDir 'OAi.Manifest.psm1') -Force
+Import-Module (Join-Path $moduleDir 'OAi.BackupAcl.psm1') -Force
 
-if (-not $BackupRoot) {
-    $BackupRoot = Join-Path $env:USERPROFILE '0AI_Backups'
-}
+# ---- Backup folder ----
+# Revert trusts these files with admin rights, so they must be beyond the
+# reach of programs without admin rights: by default under
+# %ProgramData%\0AI_Backups\<account SID>, each run's folder created
+# admin-only in one step (see OAi.BackupAcl.psm1).
 $stamp = Get-Date -Format 'yyyy-MM-dd_HHmmss'
+$customRoot = [bool]$BackupRoot
+try {
+    if (-not $customRoot) {
+        $BackupRoot = Get-OAiBackupHome -Create
+    } elseif (-not (Test-Path -LiteralPath $BackupRoot)) {
+        New-Item -ItemType Directory -Force -Path $BackupRoot | Out-Null
+    }
+} catch {
+    Write-Host ('[!] Could not prepare the backup folder {0}: {1}' -f $BackupRoot, $_.Exception.Message) -ForegroundColor Red
+    Write-Host '    Nothing applied. You can choose another location with -BackupRoot.'
+    exit 1
+}
 $BackupDir = Join-Path $BackupRoot $stamp
-if (-not (Test-Path $BackupDir)) {
-    New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
+$lockMsg = '[+] Backup folder is admin-only (read-only for you).'
+try {
+    New-OAiLockedDir -Path $BackupDir
+} catch {
+    $lockErr = $_.Exception.Message
+    # FAT / exFAT drives and some network shares have no permissions.
+    if (-not $AllowUnlockedBackup) {
+        Write-Host ('[!] Could not create an admin-only backup folder {0}: {1}' -f $BackupDir, $lockErr) -ForegroundColor Red
+        Write-Host '    Nothing applied. Use another -BackupRoot, or -AllowUnlockedBackup to continue with an unprotected backup.'
+        exit 1
+    }
+    try {
+        # New-OAiLockedDir may already have created it before its check
+        # failed; reuse it then, but only if it is still empty.
+        if (Test-Path -LiteralPath $BackupDir) {
+            if (@(Get-ChildItem -LiteralPath $BackupDir -Force).Count -gt 0) { throw 'folder exists and is not empty' }
+        } else {
+            New-Item -ItemType Directory -Path $BackupDir -ErrorAction Stop | Out-Null
+        }
+    } catch {
+        Write-Host ('[!] Could not create a new backup folder {0}: {1}' -f $BackupDir, $_.Exception.Message) -ForegroundColor Red
+        exit 1
+    }
+    $lockMsg = '[!] Backup folder is NOT admin-only (-AllowUnlockedBackup): ' + $lockErr
+    Write-Host $lockMsg -ForegroundColor Yellow
+}
+# The whole location, not just this folder: folders above it must not let
+# other programs rename it away either.
+$rootCheck = Test-OAiBackupDirLocked -Path $BackupDir
+if (-not $rootCheck.Ok -and -not $AllowUnlockedBackup) {
+    Write-Host ('[!] Backups in {0} would not be protected: {1}' -f $BackupRoot, $rootCheck.Reason) -ForegroundColor Red
+    Write-Host '    Nothing applied. Use another -BackupRoot, or -AllowUnlockedBackup to continue anyway.'
+    try { Remove-Item -LiteralPath $BackupDir -Force -ErrorAction Stop } catch {}
+    exit 1
+}
+if (-not $rootCheck.Ok) {
+    $m = '[!] Backups in this location are not protected (' + $rootCheck.Reason + '). Revert will ask before using them.'
+    Write-Host $m -ForegroundColor Yellow
+    $lockMsg += [Environment]::NewLine + $m
 }
 
 $LogFile   = Join-Path $BackupDir 'apply.log'
@@ -85,6 +141,7 @@ $VerifyTxt = Join-Path $BackupDir 'verification.txt'
 ('[+] BackupDir: ' + $BackupDir)                      | Out-File -Encoding UTF8 -FilePath $LogFile -Append
 ('[+] Categories: ' + ($Categories -join ','))        | Out-File -Encoding UTF8 -FilePath $LogFile -Append
 ('[+] PS version: ' + $PSVersionTable.PSVersion)      | Out-File -Encoding UTF8 -FilePath $LogFile -Append
+$lockMsg                                              | Out-File -Encoding UTF8 -FilePath $LogFile -Append
 
 Write-Host ('[+] Backup dir: {0}' -f $BackupDir)
 
@@ -114,7 +171,10 @@ foreach ($mf in $manifestFiles) {
 # If the user double-clicks 0AI_Apply.cmd with no arguments, show the
 # dashboard picker. If they pass -Categories / -Select / -WhatIf on the
 # command line (automation / CI), skip the menu and honor the params.
-if ($PSBoundParameters.Count -eq 0) {
+# -BackupRoot / -AllowUnlockedBackup only say where backups go; they do not
+# pick what to apply, so the menu still shows.
+$picks = @($PSBoundParameters.Keys | Where-Object { @('BackupRoot','AllowUnlockedBackup') -notcontains $_ })
+if ($picks.Count -eq 0) {
     $decision = Show-LauncherMenu -Manifest $allPolicies.ToArray()
     switch ($decision.Action) {
         'quit' {
@@ -232,6 +292,22 @@ try {
     }
 } catch {
     ('[!] Failed to write verification.txt: ' + $_.Exception.Message) | Out-File -Encoding UTF8 -FilePath $LogFile -Append
+}
+
+# ---- Seal the backup ----
+# New files normally belong to Administrators already; a "Default owner for
+# objects created by members of the Administrators group = Object creator"
+# policy would make them the user's, so fix that, then re-check.
+try { Set-OAiBackupOwner -Path $BackupDir } catch {
+    ('[!] Could not set the owner of the backup files: ' + $_.Exception.Message) | Out-File -Encoding UTF8 -FilePath $LogFile -Append
+}
+$seal = Test-OAiBackupDirLocked -Path $BackupDir
+if ($seal.Ok) {
+    '[+] Backup check: admin-only.' | Out-File -Encoding UTF8 -FilePath $LogFile -Append
+} else {
+    $m = '[!] Backup is not protected against changes without admin rights: ' + $seal.Reason
+    Write-Host $m -ForegroundColor Yellow
+    $m | Out-File -Encoding UTF8 -FilePath $LogFile -Append
 }
 
 Write-Host ''

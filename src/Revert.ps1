@@ -1,15 +1,19 @@
 #
-# 0AI v2.14.1 - Revert.ps1
+# 0AI v2.14.2 - Revert.ps1
 #
-# Finds the newest backup directory under $env:USERPROFILE\0AI_Backups (or a
-# user-specified -BackupRoot), reads run.json, and calls Undo-PolicyAction for
-# every recorded action.
+# Finds the newest trusted backup under $env:ProgramData\0AI_Backups\<SID>
+# (then the pre-v2.14.2 $env:USERPROFILE\0AI_Backups, or a user-specified
+# -BackupRoot), reads run.json, and calls Undo-PolicyAction for every
+# recorded action.
 #
 
 [CmdletBinding()]
 param(
     [string]$BackupRoot = '',
-    [string]$BackupDir  = ''
+    [string]$BackupDir  = '',
+    # Use a backup that programs without admin rights could have changed
+    # (one made by v2.14.1 or earlier) without the interactive YES prompt.
+    [switch]$AllowUnlockedBackup
 )
 
 # StrictMode disabled for hashtable-heavy manifest handling
@@ -57,35 +61,103 @@ $moduleDir   = Join-Path $thisDir 'module'
 # Version module first: the log header and restore-point name below call
 # Get-OAiVersion, so it must be loaded before any other work.
 Import-Module (Join-Path $moduleDir 'OAi.Version.psm1') -Force
+Import-Module (Join-Path $moduleDir 'OAi.BackupAcl.psm1') -Force
 $manifestDir = Join-Path $thisDir 'manifest'
 
-if (-not $BackupRoot) { $BackupRoot = Join-Path $env:USERPROFILE '0AI_Backups' }
-
+# ---- Pick the backup ----
+# Default: the admin-only home (%ProgramData%\0AI_Backups\<SID>, v2.14.2+),
+# then the old per-profile folder (v2.14.1 and earlier). Dry runs (-WhatIf)
+# and rejected -Select lists leave folders with no run.json; those are
+# skipped, as are copies Revert itself made of untrusted backups.
 if (-not $BackupDir) {
-    if (-not (Test-Path $BackupRoot)) {
-        Write-Host ('[!] No backup folder found at {0}' -f $BackupRoot) -ForegroundColor Red
+    $roots = @()
+    if ($BackupRoot) { $roots = @($BackupRoot) }
+    else { $roots = @((Get-OAiBackupHome), (Join-Path $env:USERPROFILE '0AI_Backups')) }
+    $candidates = @(foreach ($root in $roots) {
+            if (Test-Path -LiteralPath $root -PathType Container) {
+                Get-ChildItem -LiteralPath $root -Directory -Force -ErrorAction SilentlyContinue |
+                    Where-Object { $_.Name -notlike 'imported-*' -and (Test-Path -LiteralPath (Join-Path $_.FullName 'run.json') -PathType Leaf) }
+            }
+        }) | Sort-Object LastWriteTime -Descending
+    $candidates = @($candidates)
+    if ($candidates.Count -eq 0) {
+        Write-Host ('[!] No backup with a run.json found in: {0}' -f ($roots -join ', ')) -ForegroundColor Red
         exit 1
     }
-    # Dry runs (-WhatIf) and rejected -Select lists leave a folder with only
-    # apply.log; skip those so they don't hide the last real run.
-    $latest = Get-ChildItem -Path $BackupRoot -Directory -ErrorAction SilentlyContinue |
-              Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'run.json') -PathType Leaf } |
-              Sort-Object LastWriteTime -Descending |
-              Select-Object -First 1
-    if (-not $latest) {
-        Write-Host '[!] No backup subfolders with a run.json found.' -ForegroundColor Red
-        exit 1
+    # Prefer the newest trusted backup, so a newer folder some other program
+    # dropped does not win - but say so when newer ones were passed over.
+    $latest = $null
+    $skipped = @()
+    foreach ($c in $candidates) {
+        if ((Test-OAiBackupDirLocked -Path $c.FullName).Ok) { $latest = $c; break }
+        $skipped += $c
     }
+    if ($latest -and $skipped.Count -gt 0) {
+        Write-Host '[!] Newer backups were skipped because they are not admin-only:' -ForegroundColor Yellow
+        foreach ($k in $skipped) { Write-Host ('      {0}' -f $k.FullName) }
+        Write-Host '    To revert one of them, pass it with -BackupDir (Revert will ask first).'
+    }
+    if (-not $latest) { $latest = $candidates[0] }
     $BackupDir = $latest.FullName
 }
 
 Write-Host ('[+] Using backup folder: {0}' -f $BackupDir)
+
+# ---- May this backup be trusted? ----
+# Checked before anything is read from or written into it. A backup that
+# programs without admin rights could change may hold altered "previous"
+# values, which Revert would restore with admin rights.
+$lock = Test-OAiBackupDirLocked -Path $BackupDir
+$lockNote = ''
+if ($lock.Missing) {
+    Write-Host ('[!] Backup folder not found: {0}' -f $BackupDir) -ForegroundColor Red
+    exit 1
+}
+if (-not $lock.Ok) {
+    if ($lock.IsLink) {
+        Write-Host ('[!] Not using {0}: {1}.' -f $BackupDir, $lock.Reason) -ForegroundColor Red
+        exit 1
+    }
+    Write-Host ('[!] This backup is not protected against changes by programs without admin rights ({0}).' -f $lock.Reason) -ForegroundColor Yellow
+    Write-Host '    Backups made by 0AI v2.14.1 or earlier are like this, as is any backup changed since.'
+    Write-Host '    If a program altered it, Revert would restore the altered values. Use it only if you trust this PC.'
+    $proceed = [bool]$AllowUnlockedBackup
+    if (-not $proceed) {
+        $interactive = $false
+        try { $interactive = [Environment]::UserInteractive -and -not [Console]::IsInputRedirected } catch {}
+        if ($interactive) {
+            $ans = Read-Host '    Type YES to use it anyway'
+            $proceed = ([string]$ans).Trim() -ceq 'YES'
+        } else {
+            Write-Host '    Not interactive: pass -AllowUnlockedBackup to use it.'
+        }
+    }
+    if (-not $proceed) {
+        Write-Host '[i] Revert cancelled; nothing changed.'
+        exit 1
+    }
+    # Work from an admin-only copy, so nothing can swap the files while
+    # Revert reads them.
+    $orig = $BackupDir
+    try {
+        $staged = Join-Path (Get-OAiBackupHome -Create) ('imported-' + (Get-Date -Format 'yyyy-MM-dd_HHmmss'))
+        Copy-OAiBackupToLocked -Source $orig -Dest $staged
+    } catch {
+        Write-Host ('[!] Could not copy the backup to an admin-only folder: {0}' -f $_.Exception.Message) -ForegroundColor Red
+        Write-Host '[i] Revert cancelled; nothing changed.'
+        exit 1
+    }
+    $BackupDir = $staged
+    $lockNote = ('[!] Untrusted backup {0} used after confirmation ({1}); working from admin-only copy {2}' -f $orig, $lock.Reason, $staged)
+    Write-Host ('[i] Working from an admin-only copy: {0}' -f $staged)
+}
 
 $runJson = Join-Path $BackupDir 'run.json'
 $logFile = Join-Path $BackupDir 'revert.log'
 
 ('[+] 0AI {0} Revert starting' -f (Get-OAiVersion)) | Out-File -Encoding UTF8 -FilePath $logFile -Append
 ('[+] BackupDir: ' + $BackupDir) | Out-File -Encoding UTF8 -FilePath $logFile -Append
+if ($lockNote) { $lockNote | Out-File -Encoding UTF8 -FilePath $logFile -Append }
 
 if (-not (Test-Path -LiteralPath $runJson -PathType Leaf)) {
     Write-Host ('[!] run.json not found at {0}' -f $runJson) -ForegroundColor Red
