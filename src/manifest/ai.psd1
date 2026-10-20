@@ -10,7 +10,8 @@
 #               (a mirror kept for coverage) - may be ignored by Windows
 #   Community   the registry name OR the data written comes only from
 #               third-party sources (DocUrl empty = no source found)
-# Every entry re-audited against Microsoft sources in v2.14.0.
+# Every entry re-audited against Microsoft sources in v2.14.0. v2.14.1 retired
+# seven entries that had no working source (see src\retired\retired.psd1).
 #
 @(
 
@@ -275,39 +276,7 @@
         Destructive = $false
     },
 
-    # ---- [A3] Recall data folder purge ----
-    @{
-        Id          = 'AI.Recall.PurgeDataFolder'
-        Category    = 'AI'
-        Group       = 'folder'
-        Description = 'Purge folder some guides attribute to Recall (path not documented by Microsoft; destructive). Documented deletion is AllowRecallEnablement=0'
-        MinBuild    = 0
-        Kind        = 'FolderPurge'
-        Path        = '%LOCALAPPDATA%\Microsoft\Windows\Recall'
-        DocUrl      = 'https://learn.microsoft.com/windows/client-management/manage-recall'
-        Confidence  = 'Community'
-        Reversible  = $false
-        Destructive = $true
-    },
-
     # ---- [A4] Classic local-only search ----
-    @{
-        Id          = 'AI.Search.DisableSearchBoxSuggestions.Search'
-        Category    = 'AI'
-        Group       = 'reg-safe'
-        Description = 'Disable web search box suggestions (Windows Search key; Microsoft documents this value only under ...\Explorer)'
-        MinBuild    = 0
-        Kind        = 'Registry'
-        Hive        = 'HKLM'
-        Key         = 'SOFTWARE\Policies\Microsoft\Windows\Windows Search'
-        Value       = 'DisableSearchBoxSuggestions'
-        Type        = 'DWord'
-        Data        = 1
-        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-admx-windowsexplorer'
-        Confidence  = 'Community'
-        Reversible  = $true
-        Destructive = $false
-    },
     @{
         Id          = 'AI.Search.DisableSearchBoxSuggestions.Explorer'
         Category    = 'AI'
@@ -379,23 +348,6 @@
 
     # ---- [A5] Suggested Actions + Input Personalization ----
     @{
-        Id          = 'AI.SmartActions.SmartActionsState'
-        Category    = 'AI'
-        Group       = 'reg-safe'
-        Description = 'Disable Suggested Actions (no source found for this value)'
-        MinBuild    = 0
-        Kind        = 'Registry'
-        Hive        = 'HKCU'
-        Key         = 'Software\Microsoft\Windows\CurrentVersion\SmartActions'
-        Value       = 'SmartActionsState'
-        Type        = 'DWord'
-        Data        = 0
-        DocUrl      = ''
-        Confidence  = 'Community'
-        Reversible  = $true
-        Destructive = $false
-    },
-    @{
         Id          = 'AI.InputPersonalization.RestrictImplicitTextCollection'
         Category    = 'AI'
         Group       = 'reg-safe'
@@ -445,40 +397,6 @@
         Data        = 0
         DocUrl      = 'https://learn.microsoft.com/deployedge/microsoft-edge-browser-policies/hubssidebarenabled'
         Confidence  = 'Documented'
-        Reversible  = $true
-        Destructive = $false
-    },
-    @{
-        Id          = 'AI.Edge.DiscoverEnabled'
-        Category    = 'AI'
-        Group       = 'reg-safe'
-        Description = 'Disable Edge Discover (not a Microsoft Edge policy name; the real EdgeDiscoverEnabled is obsolete since Edge 105)'
-        MinBuild    = 0
-        Kind        = 'Registry'
-        Hive        = 'HKLM'
-        Key         = 'SOFTWARE\Policies\Microsoft\Edge'
-        Value       = 'DiscoverEnabled'
-        Type        = 'DWord'
-        Data        = 0
-        DocUrl      = 'https://learn.microsoft.com/deployedge/microsoft-edge-browser-policies/edgediscoverenabled'
-        Confidence  = 'Community'
-        Reversible  = $true
-        Destructive = $false
-    },
-    @{
-        Id          = 'AI.Edge.EdgeCopilotEnabled'
-        Category    = 'AI'
-        Group       = 'reg-safe'
-        Description = 'Disable Edge Copilot (documented for Edge on Android/iOS only; no effect on Windows)'
-        MinBuild    = 0
-        Kind        = 'Registry'
-        Hive        = 'HKLM'
-        Key         = 'SOFTWARE\Policies\Microsoft\Edge'
-        Value       = 'EdgeCopilotEnabled'
-        Type        = 'DWord'
-        Data        = 0
-        DocUrl      = 'https://learn.microsoft.com/deployedge/microsoft-edge-policies/edgecopilotenabled'
-        Confidence  = 'BestEffort'
         Reversible  = $true
         Destructive = $false
     },
@@ -553,43 +471,7 @@
         Destructive = $false
     },
 
-    # ---- [A18] Narrator rich image descriptions ----
-    @{
-        Id          = 'AI.Narrator.ImageDescriptionsEnabled'
-        Category    = 'AI'
-        Group       = 'reg-safe'
-        Description = 'Disable Narrator cloud-assisted rich image descriptions (no source found for this value)'
-        MinBuild    = 0
-        Kind        = 'Registry'
-        Hive        = 'HKCU'
-        Key         = 'Software\Microsoft\Narrator\NoRoam'
-        Value       = 'ImageDescriptionsEnabled'
-        Type        = 'DWord'
-        Data        = 0
-        DocUrl      = ''
-        Confidence  = 'Community'
-        Reversible  = $true
-        Destructive = $false
-    },
-
     # ---- [B1] Notepad AI (HKLM Notepad namespace) ----
-    @{
-        Id          = 'AI.Notepad.DisableAIFeatures.Notepad'
-        Category    = 'AI'
-        Group       = 'reg-safe'
-        Description = 'Disable Notepad AI features (HKLM Microsoft\Notepad key; no source uses this key)'
-        MinBuild    = 0
-        Kind        = 'Registry'
-        Hive        = 'HKLM'
-        Key         = 'SOFTWARE\Policies\Microsoft\Notepad'
-        Value       = 'DisableAIFeatures'
-        Type        = 'DWord'
-        Data        = 1
-        DocUrl      = 'https://learn.microsoft.com/windows/client-management/manage-notepad'
-        Confidence  = 'Community'
-        Reversible  = $true
-        Destructive = $false
-    },
     @{
         Id          = 'AI.Notepad.DisableAIFeatures.WindowsNotepad'
         Category    = 'AI'
