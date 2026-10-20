@@ -2,7 +2,14 @@
 # 0AI v2.3 manifest: AI category
 #
 # Every policy in this file disables an AI surface in Windows / Store apps.
-# Values come verbatim from 0AI_Apply_v2_2.bat (legacy/0AI_Apply_v2_2.bat).
+#
+# Confidence says where each registry name comes from - keep it honest:
+#   Documented  in Microsoft's policy reference, at the scope (HKLM = Device,
+#               HKCU = User) Microsoft documents for it
+#   BestEffort  real value, but written at a scope Microsoft does not document
+#               (a mirror kept for coverage) - may be ignored by Windows
+#   Community   identified by third-party sources, not by Microsoft
+# Audited against the WindowsAI Policy CSP reference in v2.13.0.
 #
 @(
 
@@ -11,7 +18,7 @@
         Id          = 'AI.WindowsCopilot.TurnOffWindowsCopilot.HKCU'
         Category    = 'AI'
         Group       = 'reg-safe'
-        Description = 'Turn off Windows Copilot (HKCU)'
+        Description = 'Turn off Windows Copilot (HKCU, documented scope; deprecated by Microsoft)'
         MinBuild    = 0
         Kind        = 'Registry'
         Hive        = 'HKCU'
@@ -28,7 +35,7 @@
         Id          = 'AI.WindowsCopilot.TurnOffWindowsCopilot.HKLM'
         Category    = 'AI'
         Group       = 'reg-safe'
-        Description = 'Turn off Windows Copilot (HKLM; Pro SKUs ignore HKCU on 24H2+)'
+        Description = 'Turn off Windows Copilot (HKLM mirror, best-effort; documented scope is HKCU only)'
         MinBuild    = 0
         Kind        = 'Registry'
         Hive        = 'HKLM'
@@ -37,14 +44,16 @@
         Type        = 'DWord'
         Data        = 1
         DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-windowsai'
-        Confidence  = 'Documented'
+        Confidence  = 'BestEffort'
         Reversible  = $true
         Destructive = $false
     },
 
     # ---- [A1a] Remove Copilot app (25H2+, Pro/Enterprise/Education) ----
-    # Official policy scope is User Configuration (HKCU). The HKLM twin is
-    # kept as a best-effort mirror for machine-wide coverage. Also blocks
+    # The WindowsAI CSP documents this at both Device (HKLM) and User (HKCU)
+    # scope, so both entries are Documented. Its edition table says not Pro
+    # while its text says Professional applies - Microsoft contradicts itself;
+    # on an edition that ignores it the write is a harmless no-op. Also blocks
     # the dockable Copilot sidebar rolling out since May 2026.
     @{
         Id          = 'AI.WindowsCopilot.RemoveMicrosoftCopilotApp.HKCU'
@@ -67,7 +76,7 @@
         Id          = 'AI.WindowsCopilot.RemoveMicrosoftCopilotApp.HKLM'
         Category    = 'AI'
         Group       = 'reg-safe'
-        Description = 'Remove Microsoft Copilot app (HKLM mirror, best-effort; official scope is HKCU)'
+        Description = 'Remove Microsoft Copilot app (HKLM, documented Device scope; uninstalls if unused 28 days)'
         MinBuild    = 26200
         Kind        = 'Registry'
         Hive        = 'HKLM'
@@ -76,23 +85,23 @@
         Type        = 'DWord'
         Data        = 1
         DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-windowsai'
-        Confidence  = 'BestEffort'
+        Confidence  = 'Documented'
         Reversible  = $true
         Destructive = $false
     },
 
     # ---- [A1b] Copilot hardware key: strip its AI launch action ----
-    # KB5124010 (Sept 22 2026) shipped a Settings/GPO path to repurpose the
-    # dedicated Copilot key on newer keyboards. Setting SetCopilotHardwareKey
-    # to "0" stops the key from launching any app at all (not just Copilot),
-    # so pressing it does nothing rather than opening an AI surface. User
-    # Configuration only - Microsoft has not published an HKLM/device-wide
-    # equivalent for this one.
+    # The policy is documented (User scope only, no Device twin), but its
+    # documented value is an app AUMID - the app the key should open. "0" is
+    # NOT a documented value: third-party guides report it leaves the key
+    # inert, plausibly because no app has that AUMID. v2.12.0 shipped this as
+    # Documented; corrected to Community in v2.13.0. The supported alternative
+    # is Settings > Bluetooth & devices > Keyboard (remap to Right Ctrl).
     @{
         Id          = 'AI.WindowsCopilot.SetCopilotHardwareKey'
         Category    = 'AI'
         Group       = 'reg-safe'
-        Description = 'Disable the dedicated Copilot hardware key (stops it launching any app)'
+        Description = 'Make the Copilot hardware key inert (community value "0"; documented value is an app AUMID)'
         MinBuild    = 26200
         Kind        = 'Registry'
         Hive        = 'HKCU'
@@ -100,8 +109,8 @@
         Value       = 'SetCopilotHardwareKey'
         Type        = 'String'
         Data        = '0'
-        DocUrl      = 'https://learn.microsoft.com/windows/client-management/manage-windows-copilot'
-        Confidence  = 'Documented'
+        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-windowsai#setcopilothardwarekey'
+        Confidence  = 'Community'
         Reversible  = $true
         Destructive = $false
     },
@@ -179,7 +188,7 @@
         Id          = 'AI.WindowsAI.DisableRecallDataProviders'
         Category    = 'AI'
         Group       = 'reg-safe'
-        Description = 'Disable Recall data providers'
+        Description = 'Disable Recall data providers (HKLM mirror, best-effort; documented scope is HKCU)'
         MinBuild    = 0
         Kind        = 'Registry'
         Hive        = 'HKLM'
@@ -188,6 +197,23 @@
         Type        = 'DWord'
         Data        = 1
         DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-windowsai'
+        Confidence  = 'BestEffort'
+        Reversible  = $true
+        Destructive = $false
+    },
+    @{
+        Id          = 'AI.WindowsAI.DisableRecallDataProviders.HKCU'
+        Category    = 'AI'
+        Group       = 'reg-safe'
+        Description = 'Disable Recall data providers (HKCU, documented User scope)'
+        MinBuild    = 0
+        Kind        = 'Registry'
+        Hive        = 'HKCU'
+        Key         = 'Software\Policies\Microsoft\Windows\WindowsAI'
+        Value       = 'DisableRecallDataProviders'
+        Type        = 'DWord'
+        Data        = 1
+        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-windowsai#disablerecalldataproviders'
         Confidence  = 'Documented'
         Reversible  = $true
         Destructive = $false
@@ -209,25 +235,12 @@
         Reversible  = $true
         Destructive = $false
     },
-    @{
-        Id          = 'AI.WindowsAI.DisableSettingsAgenticSearch'
-        Category    = 'AI'
-        Group       = 'reg-safe'
-        Description = 'Disable Settings agentic search (25H2)'
-        MinBuild    = 0
-        Kind        = 'Registry'
-        Hive        = 'HKLM'
-        Key         = 'SOFTWARE\Policies\Microsoft\Windows\WindowsAI'
-        Value       = 'DisableSettingsAgenticSearch'
-        Type        = 'DWord'
-        Data        = 1
-        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-windowsai'
-        Confidence  = 'Documented'
-        Reversible  = $true
-        Destructive = $false
-    },
 
     # ---- [A2a] IsoEnvBroker: experimental agentic features framework ----
+    # Microsoft documents the "Experimental agentic features" toggle, but not
+    # this service or its Enabled value - both are community-identified. The
+    # documented admin control (ConfigureAgentConnectors=2) is Enterprise-only
+    # and Insider-only as of Oct 2026, so it is not shipped yet.
     @{
         Id          = 'AI.IsoEnvBroker.Enabled'
         Category    = 'AI'
@@ -240,8 +253,8 @@
         Value       = 'Enabled'
         Type        = 'DWord'
         Data        = 0
-        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-windowsai'
-        Confidence  = 'Documented'
+        DocUrl      = 'https://support.microsoft.com/windows/experimental-agentic-features-a25ede8a-e4c2-4841-85a8-44839191dfb3'
+        Confidence  = 'Community'
         Reversible  = $true
         Destructive = $false
     },
@@ -255,8 +268,8 @@
         Name        = 'IsoEnvBroker'
         State       = 'Stopped'
         StartupType = 'Disabled'
-        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-windowsai'
-        Confidence  = 'Documented'
+        DocUrl      = 'https://support.microsoft.com/windows/experimental-agentic-features-a25ede8a-e4c2-4841-85a8-44839191dfb3'
+        Confidence  = 'Community'
         Reversible  = $true
         Destructive = $false
     },
