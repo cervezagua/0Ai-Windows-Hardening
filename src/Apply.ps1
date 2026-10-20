@@ -88,6 +88,7 @@ try {
     }
 } catch {
     Write-Host ('[!] Could not prepare the backup folder {0}: {1}' -f $BackupRoot, $_.Exception.Message) -ForegroundColor Red
+    Write-Host '    Nothing applied. You can choose another location with -BackupRoot.'
     exit 1
 }
 $BackupDir = Join-Path $BackupRoot $stamp
@@ -103,7 +104,13 @@ try {
         exit 1
     }
     try {
-        New-Item -ItemType Directory -Path $BackupDir -ErrorAction Stop | Out-Null
+        # New-OAiLockedDir may already have created it before its check
+        # failed; reuse it then, but only if it is still empty.
+        if (Test-Path -LiteralPath $BackupDir) {
+            if (@(Get-ChildItem -LiteralPath $BackupDir -Force).Count -gt 0) { throw 'folder exists and is not empty' }
+        } else {
+            New-Item -ItemType Directory -Path $BackupDir -ErrorAction Stop | Out-Null
+        }
     } catch {
         Write-Host ('[!] Could not create a new backup folder {0}: {1}' -f $BackupDir, $_.Exception.Message) -ForegroundColor Red
         exit 1
@@ -111,13 +118,19 @@ try {
     $lockMsg = '[!] Backup folder is NOT admin-only (-AllowUnlockedBackup): ' + $lockErr
     Write-Host $lockMsg -ForegroundColor Yellow
 }
-if ($customRoot) {
-    $rootCheck = Test-OAiBackupDirLocked -Path $BackupDir
-    if (-not $rootCheck.Ok) {
-        $m = '[!] Backups under this -BackupRoot are not protected (' + $rootCheck.Reason + '). Revert will ask before using them.'
-        Write-Host $m -ForegroundColor Yellow
-        $lockMsg += [Environment]::NewLine + $m
-    }
+# The whole location, not just this folder: folders above it must not let
+# other programs rename it away either.
+$rootCheck = Test-OAiBackupDirLocked -Path $BackupDir
+if (-not $rootCheck.Ok -and -not $AllowUnlockedBackup) {
+    Write-Host ('[!] Backups in {0} would not be protected: {1}' -f $BackupRoot, $rootCheck.Reason) -ForegroundColor Red
+    Write-Host '    Nothing applied. Use another -BackupRoot, or -AllowUnlockedBackup to continue anyway.'
+    try { Remove-Item -LiteralPath $BackupDir -Force -ErrorAction Stop } catch {}
+    exit 1
+}
+if (-not $rootCheck.Ok) {
+    $m = '[!] Backups in this location are not protected (' + $rootCheck.Reason + '). Revert will ask before using them.'
+    Write-Host $m -ForegroundColor Yellow
+    $lockMsg += [Environment]::NewLine + $m
 }
 
 $LogFile   = Join-Path $BackupDir 'apply.log'
@@ -158,7 +171,10 @@ foreach ($mf in $manifestFiles) {
 # If the user double-clicks 0AI_Apply.cmd with no arguments, show the
 # dashboard picker. If they pass -Categories / -Select / -WhatIf on the
 # command line (automation / CI), skip the menu and honor the params.
-if ($PSBoundParameters.Count -eq 0) {
+# -BackupRoot / -AllowUnlockedBackup only say where backups go; they do not
+# pick what to apply, so the menu still shows.
+$picks = @($PSBoundParameters.Keys | Where-Object { @('BackupRoot','AllowUnlockedBackup') -notcontains $_ })
+if ($picks.Count -eq 0) {
     $decision = Show-LauncherMenu -Manifest $allPolicies.ToArray()
     switch ($decision.Action) {
         'quit' {

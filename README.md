@@ -129,10 +129,15 @@ rename a locked folder away and put a forged one in its place.
   - A backup that is or contains a junction or symbolic link is never used.
 - **`-BackupRoot`** still works. If Apply can't create an admin-only folder
   there (FAT / exFAT drives, some network shares) it stops before changing
-  anything, unless you pass `-AllowUnlockedBackup`. It also warns when that
-  location lets other programs rename backups.
+  anything, unless you pass `-AllowUnlockedBackup`. It also stops if the chosen
+  location lets other programs rename backups away, again unless you pass
+  `-AllowUnlockedBackup`. Neither switch skips the interactive menu.
+- If a policy makes new files belong to your account rather than
+  Administrators ("Default owner for objects created by members of the
+  Administrators group"), an inherited *Owner Rights* read-only entry still
+  stops your account from changing them.
 - New module `src/module/OAi.BackupAcl.psm1`; the permission rules have their
-  own Pester tests (`tests/BackupAcl.Tests.ps1`, 42 tests in total).
+  own Pester tests (`tests/BackupAcl.Tests.ps1`, 46 tests in total).
 
 ## What's new in v2.14.1
 

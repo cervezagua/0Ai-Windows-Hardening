@@ -177,7 +177,7 @@ try {
 _Print-Header '0AI run history (for timeline correlation)'
 # v2.14.2+: %ProgramData%\0AI_Backups\<SID>\<stamp>; earlier: %USERPROFILE%\0AI_Backups
 $bkRoots = @((Join-Path $env:USERPROFILE '0AI_Backups'))
-$pdRoot  = Join-Path $env:ProgramData '0AI_Backups'
+$pdRoot  = Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) '0AI_Backups'
 if (Test-Path -LiteralPath $pdRoot) {
     $bkRoots += @(Get-ChildItem -LiteralPath $pdRoot -Directory -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
 }

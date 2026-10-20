@@ -25,6 +25,11 @@
 
 $ErrorActionPreference = 'Stop'
 
+if ($PSVersionTable.PSEdition -ne 'Desktop') {
+    # DirectorySecurity / FileSystemAclExtensions live here on PowerShell 7.
+    try { Add-Type -AssemblyName System.IO.FileSystem.AccessControl } catch {}
+}
+
 # SYSTEM, Administrators, TrustedInstaller
 $script:TrustedSids = @(
     'S-1-5-18',
@@ -52,12 +57,18 @@ function Test-OAiAdminOnlyAcl {
     #         for everyone)
     # Mask  : which rights count as "can change it" (default: any write)
     param([string]$Owner, $Aces, [int64]$Mask = $script:WriteMask)
-    if ($script:TrustedSids -notcontains $Owner) {
-        # The owner can always rewrite the permissions.
-        return [pscustomobject]@{ Ok = $false; Reason = ('owned by {0}' -f $Owner) }
-    }
     if ($null -eq $Aces) {
         return [pscustomobject]@{ Ok = $false; Reason = 'no access list (everyone has full access)' }
+    }
+    if ($script:TrustedSids -notcontains $Owner) {
+        # An owner may always rewrite the permissions - unless an OWNER RIGHTS
+        # (S-1-3-4) entry applies, which replaces those implicit rights with
+        # what it grants. A read-only one neutralises the owner (any write
+        # it grants is caught below, S-1-3-4 not being trusted).
+        $ow = @(@($Aces) | Where-Object { $_.Allow -and -not $_.InheritOnly -and [string]$_.Sid -eq 'S-1-3-4' })
+        if ($ow.Count -eq 0) {
+            return [pscustomobject]@{ Ok = $false; Reason = ('owned by {0}' -f $Owner) }
+        }
     }
     foreach ($a in @($Aces)) {
         if (-not $a.Allow -or $a.InheritOnly) { continue }
@@ -152,6 +163,8 @@ function Test-OAiBackupDirLocked {
         return [pscustomobject]@{ Ok = $false; IsLink = $false; Missing = $true; Reason = 'folder not found' }
     }
     try {
+        # Full path, so the check of the folders above covers all of them.
+        $Path = (Get-Item -LiteralPath $Path -Force).FullName
         # Links first, so a folder that fails on permissions too is still
         # reported as a link (refused outright, not offered to the user).
         $w = _Walk -Path $Path
@@ -179,7 +192,9 @@ function _Sddl {
     param([switch]$NoUserRead, [switch]$UsersList)
     # Owner Administrators; full control for SYSTEM and Administrators;
     # inheritance from the parent cut; new files inherit this.
-    $s = 'O:BAG:SYD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)'
+    # OW (OWNER RIGHTS) read-only: if a policy makes new files belong to the
+    # user rather than Administrators, the user still cannot change them.
+    $s = 'O:BAG:SYD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;OW)'
     if ($UsersList) {
         # Shared root: every user may list it (this folder only).
         $s += '(A;;0x1200a9;;;BU)'
@@ -236,7 +251,9 @@ function _Ensure-LockedDir {
 function Get-OAiBackupHome {
     # %ProgramData%\0AI_Backups\<SID of the account running the kit>
     param([switch]$Create)
-    $root = Join-Path $env:ProgramData '0AI_Backups'
+    # From the system known-folder setting: %ProgramData% in the environment
+    # can be changed by the user.
+    $root = Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) '0AI_Backups'
     $home_ = Join-Path $root ([System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value)
     if ($Create) {
         _Ensure-LockedDir -Path $root -UsersList
@@ -268,10 +285,26 @@ function Copy-OAiBackupToLocked {
     # only (backups are flat); the copy is not readable by the user.
     param([Parameter(Mandatory)][string]$Source, [Parameter(Mandatory)][string]$Dest)
     New-OAiLockedDir -Path $Dest -NoUserRead
+    # Only the files Revert reads; logs and anything else stay behind.
+    $wanted = '^(run\.json|reg_.+\.json|service_.+\.json|appx_.+\.json|Defender_Prefs_before\.json|ProcessMitigation_System_before\.xml|.+\.reg)$'
     foreach ($f in @(Get-ChildItem -LiteralPath $Source -Force -File)) {
+        if ($f.Name -notmatch $wanted) { continue }
         if (_Is-Link $f) { throw ('{0} is a link' -f $f.FullName) }
-        if ($f.Length -gt $script:FileSizeCap) { throw ('{0} is larger than expected' -f $f.FullName) }
-        [System.IO.File]::WriteAllBytes((Join-Path $Dest $f.Name), [System.IO.File]::ReadAllBytes($f.FullName))
+        $fs = [System.IO.File]::Open($f.FullName, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
+        try {
+            # Bounded read: the file may have grown since it was listed.
+            $buf = New-Object byte[] ($script:FileSizeCap + 1)
+            $n = 0
+            while ($n -lt $buf.Length) {
+                $k = $fs.Read($buf, $n, $buf.Length - $n)
+                if ($k -le 0) { break }
+                $n += $k
+            }
+        } finally { $fs.Dispose() }
+        if ($n -gt $script:FileSizeCap) { throw ('{0} is larger than expected' -f $f.FullName) }
+        $data = New-Object byte[] $n
+        [System.Array]::Copy($buf, $data, $n)
+        [System.IO.File]::WriteAllBytes((Join-Path $Dest $f.Name), $data)
     }
 }
 

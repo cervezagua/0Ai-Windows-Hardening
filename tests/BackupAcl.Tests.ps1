@@ -89,4 +89,23 @@ Describe '0AI backup folder ACL check' {
             (Test-OAiAdminOnlyAcl -Owner $User -Aces @((Ace $BA $FA)) -Mask $Replace).Ok | Should -BeFalse
         }
     }
+
+    Context 'OWNER RIGHTS (files a policy makes the user own)' {
+        It 'accepts a user-owned file when OWNER RIGHTS is read-only' {
+            $aces = @((Ace $SY $FA), (Ace $BA $FA), (Ace 'S-1-3-4' $RX), (Ace $User $RX))
+            (Test-OAiAdminOnlyAcl -Owner $User -Aces $aces).Ok | Should -BeTrue
+        }
+        It 'rejects OWNER RIGHTS that grants write' {
+            $aces = @((Ace $BA $FA), (Ace 'S-1-3-4' $FA))
+            (Test-OAiAdminOnlyAcl -Owner $User -Aces $aces).Ok | Should -BeFalse
+        }
+        It 'ignores an inherit-only OWNER RIGHTS entry' {
+            $aces = @((Ace $BA $FA), (Ace 'S-1-3-4' $RX $true $true))
+            (Test-OAiAdminOnlyAcl -Owner $User -Aces $aces).Ok | Should -BeFalse
+        }
+        It 'still rejects write granted to the owner by SID' {
+            $aces = @((Ace $BA $FA), (Ace 'S-1-3-4' $RX), (Ace $User $FA))
+            (Test-OAiAdminOnlyAcl -Owner $User -Aces $aces).Ok | Should -BeFalse
+        }
+    }
 }
