@@ -70,4 +70,16 @@ Describe '0AI not-applicable reasons' {
             Get-OAiNotApplicableReason -Policy @{ Id = 'B'; Kind = 'Registry'; MinBuild = 99999 } | Should -Be ''
         }
     }
+
+    Context 'scheduled tasks' {
+        It 'a task that does not exist' {
+            Mock -ModuleName OAi.Engine _Get-Task { $null }
+            Get-OAiNotApplicableReason -Policy @{ Id = 'T'; Kind = 'ScheduledTask'; TaskPath = '\Microsoft\Windows\X\'; TaskName = 'Y' } |
+                Should -Be 'scheduled task \Microsoft\Windows\X\Y does not exist on this PC'
+        }
+        It 'nothing when it exists' {
+            Mock -ModuleName OAi.Engine _Get-Task { [pscustomobject]@{ State = 'Ready' } }
+            Get-OAiNotApplicableReason -Policy @{ Id = 'T'; Kind = 'ScheduledTask'; TaskPath = '\A\'; TaskName = 'B' } | Should -Be ''
+        }
+    }
 }

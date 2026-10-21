@@ -316,7 +316,7 @@ $fallback = @{}
 $needIds = @(foreach ($r in $results) {
         $rid = [string]$r.Id
         if (-not $rid -or -not $policyMap.ContainsKey($rid)) { continue }
-        if (@('Registry', 'Service') -notcontains $policyMap[$rid].Kind) { continue }
+        if (@('Registry', 'Service', 'ScheduledTask') -notcontains $policyMap[$rid].Kind) { continue }
         # Only policies Apply skipped (already in place). An 'error' with no
         # snapshot never changed anything, and an 'ok' whose snapshot is gone
         # should not be replaced by an older run's value.

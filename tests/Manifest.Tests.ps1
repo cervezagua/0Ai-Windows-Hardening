@@ -16,8 +16,8 @@ Describe '0AI manifest schema' {
 
     BeforeAll {
         $ValidCategories  = @('AI','PRIV','HARD','DEBLOAT','AUDIT')
-        $ValidGroups      = @('reg-safe','sc-safe','appx','defender','mitigation','folder','report')
-        $ValidKinds       = @('Registry','Service','AppxRemove','DefenderPref','DefenderAsr','Mitigation','FolderPurge','Report')
+        $ValidGroups      = @('reg-safe','sc-safe','task','appx','defender','mitigation','folder','report')
+        $ValidKinds       = @('Registry','Service','ScheduledTask','AppxRemove','DefenderPref','DefenderAsr','Mitigation','FolderPurge','Report')
         $ValidConfidence  = @('Documented','BestEffort','Community')
         $ValidHives       = @('HKLM','HKCU')
         $ValidRegTypes    = @('DWord','QWord','String','ExpandString','MultiString','Binary')
@@ -198,6 +198,17 @@ Describe '0AI manifest schema' {
             # Undo passes Value to -Name, which treats these as wildcards.
             $bad = @($script:Registry | Where-Object { [string]$_.Value -match '[\*\?\[\]]' } |
                 ForEach-Object { '{0} (Value={1})' -f $_.Id, $_.Value })
+            $bad.Count | Should -Be 0 -Because "offenders: $($bad -join ', ')"
+        }
+    }
+
+    Context 'Kind=ScheduledTask' {
+        It 'has a \-delimited TaskPath and a TaskName, in Group=task' {
+            $bad = @(foreach ($p in @($script:Policies | Where-Object { $_.Kind -eq 'ScheduledTask' })) {
+                    if (-not ($p.TaskPath -is [string] -and $p.TaskPath.StartsWith('\') -and $p.TaskPath.EndsWith('\'))) { '{0}: TaskPath' -f $p.Id }
+                    if (-not ($p.TaskName -is [string] -and $p.TaskName.Length -gt 0)) { '{0}: TaskName' -f $p.Id }
+                    if ($p.Group -ne 'task') { '{0}: Group' -f $p.Id }
+                })
             $bad.Count | Should -Be 0 -Because "offenders: $($bad -join ', ')"
         }
     }

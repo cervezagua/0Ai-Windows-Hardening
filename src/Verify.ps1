@@ -103,6 +103,17 @@ foreach ($p in $all) {
                     $status  = 'n/a'
                 }
             }
+            'ScheduledTask' {
+                $expected = 'Disabled'
+                try {
+                    $t = Get-ScheduledTask -TaskPath $p.TaskPath -TaskName $p.TaskName -ErrorAction Stop
+                    $current = [string]$t.State
+                    if ($current -eq 'Disabled') { $status = 'match' } else { $status = 'drift' }
+                } catch {
+                    $current = 'n/a: scheduled task does not exist on this PC'
+                    $status  = 'n/a'
+                }
+            }
             'AppxRemove' {
                 $expected = 'absent'
                 try {

@@ -184,6 +184,12 @@ function _Get-CurrentBuild {
     return $b
 }
 
+function _Get-Task {
+    # $null when the scheduled task does not exist.
+    param($Policy)
+    try { return (Get-ScheduledTask -TaskPath $Policy.TaskPath -TaskName $Policy.TaskName -ErrorAction Stop) } catch { return $null }
+}
+
 function _Service-Installed {
     param([string]$Name)
     try { $null = Get-Service -Name $Name -ErrorAction Stop; return $true } catch { return $false }
@@ -202,6 +208,9 @@ function Get-OAiNotApplicableReason {
     }
     if ($Policy.Kind -eq 'Service' -and $Policy.Name -and -not (_Service-Installed $Policy.Name)) {
         return ('service {0} is not installed on this PC' -f $Policy.Name)
+    }
+    if ($Policy.Kind -eq 'ScheduledTask' -and -not (_Get-Task $Policy)) {
+        return ('scheduled task {0}{1} does not exist on this PC' -f $Policy.TaskPath, $Policy.TaskName)
     }
     if ($Policy.RequiresService -and -not (_Service-Installed $Policy.RequiresService)) {
         return ('service {0} is not installed on this PC' -f $Policy.RequiresService)
@@ -260,6 +269,11 @@ function Test-Precondition {
                     return $false # service missing - skip silently
                 }
                 return $true
+            }
+            'ScheduledTask' {
+                $t = _Get-Task $Policy
+                if (-not $t) { return $false }
+                return ([string]$t.State -ne 'Disabled')
             }
             default { return $true }
         }
@@ -346,6 +360,20 @@ function Backup-PolicyState {
                 } catch {
                     '{"error":"service not found"}' | Out-File -Encoding UTF8 -FilePath $outFile
                 }
+                return $outFile
+            }
+            'ScheduledTask' {
+                $fname = 'task_{0}.json' -f (_Sanitize-Filename ($Policy.TaskPath + $Policy.TaskName))
+                $outFile = Join-Path $BackupDir $fname
+                $t = _Get-Task $Policy
+                $snap = [pscustomobject]@{
+                    TaskPath = $Policy.TaskPath
+                    TaskName = $Policy.TaskName
+                    Existed  = [bool]$t
+                    State    = $null
+                }
+                if ($t) { $snap.State = [string]$t.State }
+                $snap | ConvertTo-Json -Depth 4 | Out-File -Encoding UTF8 -FilePath $outFile
                 return $outFile
             }
             'AppxRemove' {
@@ -439,6 +467,10 @@ function Invoke-PolicyAction {
         switch ($Policy.Kind) {
             'Registry'    { $msg = _Apply-Registry    -Policy $Policy }
             'Service'     { $msg = _Apply-Service     -Policy $Policy }
+            'ScheduledTask' {
+                Disable-ScheduledTask -TaskPath $Policy.TaskPath -TaskName $Policy.TaskName -ErrorAction Stop | Out-Null
+                $msg = ('disabled scheduled task {0}{1}' -f $Policy.TaskPath, $Policy.TaskName)
+            }
             'AppxRemove'  { $msg = _Apply-AppxRemove  -Policy $Policy }
             'DefenderPref' { $msg = _Apply-DefenderPref -Policy $Policy }
             'DefenderAsr'  { $msg = _Apply-DefenderAsr  -Policy $Policy }
@@ -768,6 +800,26 @@ function Undo-PolicyAction {
                 }
                 $sw.Stop()
                 return (_New-Result -Id $Policy.Id -Status 'warn' -DurationMs $sw.ElapsedMilliseconds -Message 'no service snapshot')
+            }
+            'ScheduledTask' {
+                $bf = Resolve-OAiBackupFile -BackupDir $BackupDir -Recorded $BackupFile
+                $sw.Stop()
+                if (-not $bf) {
+                    return (_New-Result -Id $Policy.Id -Status 'warn' -DurationMs $sw.ElapsedMilliseconds -Message 'no task snapshot; left as it is')
+                }
+                try {
+                    $snap = Get-Content -LiteralPath $bf -Raw | ConvertFrom-Json
+                    if (-not ((_Same-RegName $snap.TaskPath $Policy.TaskPath) -and (_Same-RegName $snap.TaskName $Policy.TaskName))) {
+                        return (_New-Result -Id $Policy.Id -Status 'warn' -DurationMs $sw.ElapsedMilliseconds -Message ('task snapshot does not match {0}{1} - not restored' -f $Policy.TaskPath, $Policy.TaskName))
+                    }
+                    if ($snap.Existed -eq $true -and [string]$snap.State -ne 'Disabled') {
+                        Enable-ScheduledTask -TaskPath $Policy.TaskPath -TaskName $Policy.TaskName -ErrorAction Stop | Out-Null
+                        return (_New-Result -Id $Policy.Id -Status 'ok' -DurationMs $sw.ElapsedMilliseconds -Message ('re-enabled scheduled task {0}{1}' -f $Policy.TaskPath, $Policy.TaskName))
+                    }
+                    return (_New-Result -Id $Policy.Id -Status 'ok' -DurationMs $sw.ElapsedMilliseconds -Message 'task was already disabled before apply; left disabled')
+                } catch {
+                    return (_New-Result -Id $Policy.Id -Status 'warn' -DurationMs $sw.ElapsedMilliseconds -Message ('task revert failed: ' + $_.Exception.Message))
+                }
             }
             'AppxRemove' {
                 # v2.3 matches v2.2: we do NOT reinstall removed Appx packages.

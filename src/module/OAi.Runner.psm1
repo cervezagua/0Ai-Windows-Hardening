@@ -6,6 +6,8 @@
 # Exec groups and caps (from architecture doc):
 #   reg-safe   -> 16    (parallel-safe)
 #   sc-safe    -> 8
+#   task       -> 4     (scheduled tasks)
+#   user       -> 1     (other users' hives, -AllUsers; serial)
 #   appx       -> 1     (DISM serializes)
 #   defender   -> 1     (Set-MpPreference hates concurrency)
 #   mitigation -> 1     (global system-wide)
@@ -21,6 +23,8 @@ $ErrorActionPreference = 'Stop'
 $script:ExecGroupCaps = @{
     'reg-safe'   = 16
     'sc-safe'    = 8
+    'task'       = 4
+    'user'       = 1
     'appx'       = 1
     'defender'   = 1
     'mitigation' = 1
