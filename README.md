@@ -1,7 +1,7 @@
 # 0AI - Windows Hardening Kit
 
 ### Windows 11 Privacy, AI Disablement & Security Hardening
-**Version:** `v2.14.6`
+**Version:** `v2.15.0`
 
 **Supported baselines:** Windows 11 25H2 (OS Build **26200.9711+**) and 26H2
 (OS Build **26300.9711+**), through the **October 13 2026 Patch Tuesday
@@ -33,7 +33,8 @@ matters.
 1. **Right-click** `0AI_Apply.cmd`
 2. Select **Run as Administrator**
 3. An interactive picker appears — use `Up/Down` to move, `SPACE` to
-   toggle a category, `D` to toggle dry-run, `ENTER` to run, `Q` to quit
+   toggle a category, `D` to toggle dry-run, `U` to also cover every other
+   user profile (see *All users*), `ENTER` to run, `Q` to quit
 4. Wait for the console progress to finish
 5. **Reboot** when done
 
@@ -62,7 +63,29 @@ anything, also under `-WhatIf`.
 Run Apply while signed in as the person whose settings you want changed,
 with an admin account of their own. If you approve the UAC prompt with a
 *different* admin account, per-user (HKCU) policies land in that account's
-profile; the kit warns when this happens but does not redirect the writes.
+profile; the kit warns when this happens. To cover everyone, use
+`-AllUsers` (below).
+
+### All users (v2.15.0+)
+
+```cmd
+0AI_Apply.cmd -AllUsers
+0AI_Verify.cmd -AllUsers
+```
+
+Per-user (HKCU) policies normally reach only the account running the kit.
+With `-AllUsers` (or `U` in the picker) they also go to **every other local
+profile** and to the **Default profile**, which Windows copies for accounts
+created later. Machine-wide (HKLM) policies already cover everyone.
+
+- Signed-in users are written directly. Signed-out users' registry hives
+  (`NTUSER.DAT`) are loaded for the run with `reg load` and always unloaded
+  afterwards. If an unload ever fails, the kit says so in red: restart
+  Windows before that person signs in, or they may get a temporary profile.
+- Each copy shows as `<Id>@<SID>` or `<Id>@Default` in logs and Verify, and
+  is backed up per user. Revert undoes them whether or not that user is
+  signed in at the time; it needs no `-AllUsers`.
+- Verify needs an elevated PowerShell for `-AllUsers`.
 
 ### Revert
 1. **Right-click** `0AI_Revert.cmd`
@@ -98,6 +121,72 @@ the manifest. No changes.
 reinstalled by `Revert.ps1`. Opt in only if you're comfortable with that.
 
 ---
+
+## What's new in v2.15.0
+
+**Lessons from Win11Debloat.** We compared the kit with
+[Raphire/Win11Debloat](https://github.com/Raphire/Win11Debloat) (release
+2026.08.24) and adopted what fits this kit's rules. Every new setting was
+checked on Microsoft Learn first; see *Compared with Win11Debloat* for what
+we deliberately did not copy.
+
+- **`-AllUsers`:** per-user policies for every profile and for new
+  accounts (Default profile). See *All users* in Quick Start.
+- **New AI policies (Microsoft Edge, documented):**
+  - `CopilotPageContext`, `EdgeEntraCopilotPageContext`,
+    `Microsoft365CopilotChatIconEnabled` and `ComposeInlineEnabled`. These
+    four only affect work/school (Entra ID) Edge profiles.
+  - `EdgeHistoryAISearchEnabled`, `NewTabPageBingChatEnabled`, and
+    `GenAILocalFoundationalModelSettings = 1`, which stops Edge downloading
+    its on-device AI model and deletes any copy.
+- **Recall and Click to Do at user scope:** `DisableAIDataAnalysis` and
+  `DisableClickToDo` under HKCU, which the WindowsAI CSP documents alongside
+  the machine-wide ones.
+- **New privacy policies:**
+  - Edge `DiagnosticData = 0`, `PersonalizationReportingEnabled`,
+    `ShowRecommendationsEnabled`, `EdgeShoppingAssistantEnabled`,
+    `SpotlightExperiencesAndRecommendationsEnabled`.
+  - Desktop Spotlight (`DisableSpotlightCollectionOnDesktop`).
+  - `Start_IrisRecommendations = 0` (Start recommendations).
+- **Ads and suggestions on Home and Pro.** Microsoft honours the
+  `CloudContent` policies (`DisableWindowsConsumerFeatures`,
+  `DisableSoftLanding`, desktop Spotlight and others) on **Enterprise and
+  Education only**. On Home and Pro, the per-user `ContentDeliveryManager`
+  preferences are what actually turn Start, Settings and tips suggestions
+  off, so the kit now sets those too. They are labelled `Community`:
+  Microsoft uses them in its VDI optimisation sample but documents no
+  values.
+- **Telemetry scheduled tasks (new policy kind `ScheduledTask`):** CEIP
+  `Consolidator` and `DiskDiagnosticDataCollector` (BestEffort: Microsoft's
+  VDI guide describes them) and `UsbCeip` (Community). Revert re-enables a
+  task only if it was enabled before. A task that does not exist on the PC
+  shows as `n/a`.
+- **DEBLOAT:** removes the AI Hub app (`Microsoft.Windows.AIHub`;
+  Community). This only happens when DEBLOAT is selected.
+- **Restore points are checked, not assumed.** Windows silently skips a new
+  restore point when one exists from the last 24 hours, and the kit used to
+  log "created" anyway. Apply and Revert now compare the restore points
+  before and after and say which happened.
+- **Other changes:**
+  - On domain-joined PCs, Apply and Verify warn that your organisation's
+    Group Policy can override these settings.
+  - Every script stops cleanly with a clear message under Constrained
+    Language Mode (WDAC/AppLocker), instead of failing partway.
+  - Build-gated policies say exactly why they are `n/a`. A new `MaxBuild`
+    manifest field lets a policy stop applying on newer builds.
+- **Checked but not shipped:**
+  - `CopilotCDPPageContext`: obsolete since Edge 132.
+  - `TurnOffSavingSnapshots`: only the Group Policy display name of
+    `DisableAIDataAnalysis`, not a registry value.
+  - Paint `DisableGenerativeErase` and `DisableRemoveBackground`: still not
+    in Microsoft's docs.
+  - The `WSAIFabricSvc` service: undocumented, and treated as a core OS
+    component.
+  - The Microsoft Compatibility Appraiser task: it also feeds Windows
+    Update's upgrade-compatibility checks.
+  - The `ProgramDataUpdater` task: no source.
+- New modules `OAi.System.psm1` and `OAi.Users.psm1`, and new tests
+  `System.Tests.ps1` and `Users.Tests.ps1`.
 
 ## What's new in v2.14.6
 
@@ -922,6 +1011,30 @@ existed. The Narrator entry is now `Community`: no source was found for it.)
 
 ---
 
+## Compared with Win11Debloat
+
+[Win11Debloat](https://github.com/Raphire/Win11Debloat) is a popular,
+well-maintained debloat and UI-tweak script. v2.15.0 took several ideas
+from it (see the v2.15.0 notes). It also does things this kit deliberately
+avoids. That is not a judgement on Win11Debloat; the two tools have
+different goals:
+
+| Win11Debloat does | 0AI instead | Why |
+|---|---|---|
+| Applies `.reg` files with `reg import` | Writes each value itself and keeps a per-value JSON snapshot | `reg import` is what behavioural antivirus flagged in v2.9 (see v2.9.4) |
+| Blocks Store search suggestions with an Everyone-Deny ACL on `store.db`, and undoes it with `takeown`/`icacls` | Not shipped | Seizing or denying ACLs reads as defense evasion, and it is not reversible from a snapshot |
+| Force-removes Edge (stub `MicrosoftEdge.exe`, `AllowUninstall`) | Not shipped | Edge is serviced by Windows; the kit disables Edge's AI and telemetry by policy instead |
+| Points the `ms-gamebar` protocol at `systray.exe` | Not shipped | Hijacking protocol handlers is a technique AV watches for |
+| Turns off hibernation, BitLocker auto-encryption | Not shipped | Security or data-loss trade-offs outside a privacy kit's job |
+| Many UI tweaks (taskbar, Start layout, Explorer) | Not shipped | Out of scope: 0AI covers AI, privacy and hardening |
+| No Defender, ASR, RDP, CredSSP or exploit-mitigation hardening | `HARD` category | Win11Debloat is not a hardening tool |
+
+Its labels and paths also differ in places (for example, telemetry level
+`0` written under `CurrentVersion\Policies`, and telemetry undo that sets
+level `3` instead of restoring the previous value). 0AI labels every entry
+`Documented`, `BestEffort` or `Community`, and Revert restores the value
+that was there before.
+
 ## What this script does NOT do
 
 - Does **not** force the Windows Firewall on.
@@ -1191,7 +1304,9 @@ Windows installs.
 |                            + shared manifest loader (OAi.Manifest.psm1)
 |                            + admin-only backup folders (OAi.BackupAcl.psm1)
 |                            + snapshots from older backups (OAi.BackupHistory.psm1)
-|-- tests/Manifest.Tests.ps1, BackupAcl.Tests.ps1, BackupHistory.Tests.ps1, Modules.Tests.ps1, NotApplicable.Tests.ps1
+|                            + restore point / domain checks (OAi.System.psm1)
+|                            + per-user targets for -AllUsers (OAi.Users.psm1)
+|-- tests/  Manifest, BackupAcl, BackupHistory, Modules, NotApplicable, System, Users (*.Tests.ps1)
 |-- docs/ARCHITECTURE.md
 |-- legacy/                  v2.2 .bat scripts, preserved for reference
 `-- README.md                (this file)
