@@ -46,6 +46,8 @@ function _Resolve-Hive {
         'HKLM' { return 'HKLM:' }
         'HKCU' { return 'HKCU:' }
         'HKCR' { return 'HKCR:' }
+        # Other users' hives (-AllUsers): HKEY_USERS\<mount>\...
+        'HKU'  { return 'Registry::HKEY_USERS' }
         default { return ($Hive + ':') }
     }
 }
@@ -60,6 +62,7 @@ function _Ensure-RegistryKey {
         'HKLM' { $base = [Microsoft.Win32.RegistryHive]::LocalMachine }
         'HKCU' { $base = [Microsoft.Win32.RegistryHive]::CurrentUser }
         'HKCR' { $base = [Microsoft.Win32.RegistryHive]::ClassesRoot }
+        'HKU'  { $base = [Microsoft.Win32.RegistryHive]::Users }
         default { throw ('unsupported hive: {0}' -f $Hive) }
     }
     $root = $null
@@ -250,7 +253,7 @@ function Test-Precondition {
             'Registry' {
                 $path = Join-Path (_Resolve-Hive $Policy.Hive) $Policy.Key
                 try {
-                    $cur = Get-ItemProperty -Path $path -Name $Policy.Value -ErrorAction Stop
+                    $cur = Get-ItemProperty -LiteralPath $path -Name $Policy.Value -ErrorAction Stop
                     if ($null -ne $cur.$($Policy.Value) -and $cur.$($Policy.Value) -eq $Policy.Data) {
                         return $false # already applied - skip
                     }
@@ -318,19 +321,25 @@ function Backup-PolicyState {
                 #    reverts exactly what we touched, and can represent
                 #    "this value did not exist before" (revert = delete it),
                 #    which reg import cannot express at all.
-                $fname = 'reg_{0}.json' -f (_Sanitize-Filename ("{0}_{1}_{2}" -f $Policy.Hive, $Policy.Key, $Policy.Value))
+                # A per-user copy (-AllUsers) records the user it is for
+                # (HKCU@<label>) and the plain key, not where the hive was
+                # mounted, so Revert can match it whatever the mount is then.
+                $sHive = [string]$Policy.Hive
+                $sKey  = [string]$Policy.Key
+                if ($Policy.SnapshotHive) { $sHive = [string]$Policy.SnapshotHive; $sKey = [string]$Policy.SnapshotKey }
+                $fname = 'reg_{0}.json' -f (_Sanitize-Filename ("{0}_{1}_{2}" -f $sHive, $sKey, $Policy.Value))
                 $outFile = Join-Path $BackupDir $fname
                 $path = Join-Path (_Resolve-Hive $Policy.Hive) $Policy.Key
                 $snap = [ordered]@{
-                    Hive    = $Policy.Hive
-                    Key     = $Policy.Key
+                    Hive    = $sHive
+                    Key     = $sKey
                     Value   = $Policy.Value
                     Existed = $false
                     Type    = $null
                     Data    = $null
                 }
                 try {
-                    $item = Get-Item -Path $path -ErrorAction Stop
+                    $item = Get-Item -LiteralPath $path -ErrorAction Stop
                     # GetValueKind throws if the value is absent - that is the
                     # signal for "did not exist", handled by the catch below.
                     $kind = $item.GetValueKind($Policy.Value)
@@ -704,7 +713,10 @@ function Undo-PolicyAction {
                     # always comes from the manifest; the snapshot only
                     # supplies Existed/Type/Data, and must agree with it.
                     $snap = Get-Content -Raw -LiteralPath $bf | ConvertFrom-Json
-                    if (-not ((_Same-RegName $snap.Hive $Policy.Hive) -and (_Same-RegName $snap.Key $Policy.Key) -and (_Same-RegName $snap.Value $Policy.Value))) {
+                    $wantHive = [string]$Policy.Hive
+                    $wantKey  = [string]$Policy.Key
+                    if ($Policy.SnapshotHive) { $wantHive = [string]$Policy.SnapshotHive; $wantKey = [string]$Policy.SnapshotKey }
+                    if (-not ((_Same-RegName $snap.Hive $wantHive) -and (_Same-RegName $snap.Key $wantKey) -and (_Same-RegName $snap.Value $Policy.Value))) {
                         $sw.Stop()
                         return (_New-Result -Id $Policy.Id -Status 'warn' -DurationMs $sw.ElapsedMilliseconds -Message ('snapshot {0} does not match {1}\{2}!{3} - not restored' -f $bf, $Policy.Hive, $Policy.Key, $Policy.Value))
                     }

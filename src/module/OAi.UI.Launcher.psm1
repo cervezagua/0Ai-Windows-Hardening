@@ -7,7 +7,8 @@
 # Returns a pscustomobject:
 #   @{ Action     = 'apply'|'quit'
 #      Categories = @('AI','PRIV',...)
-#      WhatIf     = $true|$false }
+#      WhatIf     = $true|$false
+#      AllUsers   = $true|$false }
 #
 # Non-interactive hosts get the v2.2-equivalent default result.
 #
@@ -93,7 +94,8 @@ function _Draw-Picker {
         [string[]]$Rows,
         $Selected,
         [int]$Cursor,
-        [bool]$Dryrun
+        [bool]$Dryrun,
+        [bool]$AllUsers = $false
     )
 
     _Clear-Screen
@@ -116,7 +118,7 @@ function _Draw-Picker {
     Write-Host ''
     Write-Host $top
     Write-Host (' ' + $vb + (_Pad-Interior ('  0AI {0}  -  Select categories to apply' -f (Get-OAiVersion))) + $vb)
-    Write-Host (' ' + $vb + (_Pad-Interior '  Up/Dn move   SPACE toggle   ENTER run   D dry-run   Q quit') + $vb)
+    Write-Host (' ' + $vb + (_Pad-Interior '  Up/Dn  SPACE pick  ENTER run  D dry-run  U all users  Q quit') + $vb)
     Write-Host $sep
     Write-Host (' ' + $vb + (_Pad-Interior '') + $vb)
 
@@ -157,7 +159,8 @@ function _Draw-Picker {
         if ($Selected[$cat]) { $selCount += $Stats[$cat].PolicyCount }
     }
     $drTag = if ($Dryrun) { 'ON ' } else { 'OFF' }
-    $footer = ('  {0,3} policies selected    |    dry-run: {1}' -f $selCount, $drTag)
+    $auTag = if ($AllUsers) { 'ON ' } else { 'OFF' }
+    $footer = ('  {0,3} policies selected  |  dry-run: {1}  |  all users: {2}' -f $selCount, $drTag, $auTag)
 
     Write-Host (' ' + $vb + (_Pad-Interior $footer) + $vb)
     Write-Host $bot
@@ -174,6 +177,7 @@ function Show-LauncherMenu {
             Action     = 'apply'
             Categories = @('AI','PRIV','HARD','AUDIT')
             WhatIf     = $false
+            AllUsers   = $false
         }
     }
 
@@ -183,15 +187,16 @@ function Show-LauncherMenu {
     $selected = @{ AI = $true; PRIV = $true; HARD = $true; AUDIT = $true; DEBLOAT = $false }
     $cursor   = 0
     $dryrun   = $false
+    $allusers = $false
 
     while ($true) {
-        _Draw-Picker -Stats $stats -Rows $rows -Selected $selected -Cursor $cursor -Dryrun $dryrun
+        _Draw-Picker -Stats $stats -Rows $rows -Selected $selected -Cursor $cursor -Dryrun $dryrun -AllUsers $allusers
 
         $k = $null
         try {
             $k = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
         } catch {
-            return [pscustomobject]@{ Action = 'quit'; Categories = @(); WhatIf = $false }
+            return [pscustomobject]@{ Action = 'quit'; Categories = @(); WhatIf = $false; AllUsers = $false }
         }
 
         $vk   = [int]$k.VirtualKeyCode
@@ -212,6 +217,7 @@ function Show-LauncherMenu {
                 Action     = 'apply'
                 Categories = $picked
                 WhatIf     = $dryrun
+                AllUsers   = $allusers
             }
         }
         if ($vk -eq 32 -or $char -eq ' ') {
@@ -222,7 +228,8 @@ function Show-LauncherMenu {
 
         switch -Regex ($char) {
             '^[dD]$' { $dryrun = -not $dryrun; continue }
-            '^[qQ]$' { return [pscustomobject]@{ Action='quit'; Categories=@(); WhatIf=$false } }
+            '^[uU]$' { $allusers = -not $allusers; continue }
+            '^[qQ]$' { return [pscustomobject]@{ Action='quit'; Categories=@(); WhatIf=$false; AllUsers=$false } }
         }
     }
 }

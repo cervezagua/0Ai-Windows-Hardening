@@ -74,6 +74,7 @@ Import-Module (Join-Path $moduleDir 'OAi.System.psm1') -Force
 $manifestDir = Join-Path $thisDir 'manifest'
 
 Import-Module (Join-Path $moduleDir 'OAi.BackupHistory.psm1') -Force
+Import-Module (Join-Path $moduleDir 'OAi.Users.psm1') -Force
 
 # ---- Helpers ----
 function _Get-BackupFolders {
@@ -307,6 +308,30 @@ function _Undo-RetiredPolicy {
 $run = Get-Content -LiteralPath $runJson -Raw | ConvertFrom-Json
 $results = @($run.Results)
 
+# ---- Per-user copies (-AllUsers runs) ----
+# Ids like "<Id>@<SID>" / "<Id>@Default" were applied to another profile's
+# hive. Rebuild each from the manifest record and where that profile's hive
+# is reachable now (signed in, or loaded below just for the undo).
+$revTargets = @{}
+$missingTargets = @{}
+$atResults = @($results | Where-Object { ([string]$_.Id).Contains('@') })
+if ($atResults.Count -gt 0) {
+    $known = @()
+    try { $known = @(Get-OAiUserTargets) } catch {}
+    $byLabel = @{}
+    foreach ($t in $known) { $byLabel[$t.Label] = $t }
+    foreach ($r in $atResults) {
+        $sp = Split-OAiTargetId -Id ([string]$r.Id)
+        if (-not $policyMap.ContainsKey($sp.BaseId)) { continue }
+        if (-not $byLabel.ContainsKey($sp.Label)) { $missingTargets[[string]$r.Id] = $sp.Label; continue }
+        $tp = New-OAiTargetPolicy -Policy $policyMap[$sp.BaseId] -Target $byLabel[$sp.Label]
+        if ($tp) {
+            $policyMap[[string]$r.Id] = $tp
+            $revTargets[$sp.Label] = $byLabel[$sp.Label]
+        }
+    }
+}
+
 # ---- Snapshots from older backups ----
 # A policy that was already in place when this backup's Apply ran was
 # skipped without a snapshot. Its value from before the kit first changed
@@ -427,37 +452,67 @@ if ($rp.Status -ne 'created') { $rpTag = '[!] ' }
 ($rpTag + '(pre-revert) ' + $rp.Message) | Out-File -Encoding UTF8 -FilePath $logFile -Append
 if ($rp.Status -ne 'created') { Write-Host ($rpTag + $rp.Message) -ForegroundColor Yellow }
 
-$counters = @{ ok = 0; warn = 0; error = 0; skipped = 0 }
-foreach ($r in $results) {
-    $rid = [string]$r.Id
-    $bf = ''
-    if ($r.PSObject.Properties.Name -contains 'BackupFile') { $bf = [string]$r.BackupFile }
-    if ($rid -and $fallback.ContainsKey($rid) -and $policyMap.ContainsKey($rid)) {
-        $fb = $fallback[$rid]
-        $u = Undo-PolicyAction -Policy $policyMap[$rid] -BackupDir $fb.Dir -BackupFile $fb.BackupFile
-        $u = [pscustomobject]@{ Id = $u.Id; Status = $u.Status; Message = ('from older backup {0}: {1}' -f $fb.Name, $u.Message) }
-    } elseif ($rid -and $policyMap.ContainsKey($rid)) {
-        $u = Undo-PolicyAction -Policy $policyMap[$rid] -BackupDir $BackupDir -BackupFile $bf
-    } elseif ($rid -and $retiredMap.ContainsKey($rid)) {
-        try {
-            $u = _Undo-RetiredPolicy -Retired $retiredMap[$rid] -BackupDir $BackupDir -BackupFile $bf
-        } catch {
-            $u = [pscustomobject]@{ Id = $rid; Status = 'error'; Message = ('retired-policy revert failed: ' + $_.Exception.Message) }
-        }
-    } else {
-        $m = ('[warn] {0}: not in current manifest and not a known retired policy - skipped' -f $rid)
+# Load the other profiles' hives this backup touched; unloaded in finally.
+$mounted = @()
+foreach ($t in $revTargets.Values) {
+    if (Mount-OAiUserHive -Target $t) { $mounted += $t }
+    else {
+        $m = ('[!] Could not load the profile of {0}; its per-user settings are not reverted.' -f $t.Name)
         Write-Host $m -ForegroundColor Yellow
         $m | Out-File -Encoding UTF8 -FilePath $logFile -Append
-        $counters.warn++
-        continue
+        foreach ($k in @($policyMap.Keys)) {
+            if ($policyMap[$k].TargetLabel -eq $t.Label) { $policyMap.Remove($k); $missingTargets[$k] = $t.Label }
+        }
     }
-    ('[{0,-7}] {1}  {2}' -f $u.Status, $u.Id, $u.Message) | Out-File -Encoding UTF8 -FilePath $logFile -Append
-    Write-Host ('[{0,-7}] {1}  {2}' -f $u.Status, $u.Id, $u.Message)
-    switch ($u.Status) {
-        'ok'      { $counters.ok++ }
-        'warn'    { $counters.warn++ }
-        'error'   { $counters.error++ }
-        'skipped' { $counters.skipped++ }
+}
+
+$counters = @{ ok = 0; warn = 0; error = 0; skipped = 0 }
+try {
+    foreach ($r in $results) {
+        $rid = [string]$r.Id
+        $bf = ''
+        if ($r.PSObject.Properties.Name -contains 'BackupFile') { $bf = [string]$r.BackupFile }
+        if ($rid -and $fallback.ContainsKey($rid) -and $policyMap.ContainsKey($rid)) {
+            $fb = $fallback[$rid]
+            $u = Undo-PolicyAction -Policy $policyMap[$rid] -BackupDir $fb.Dir -BackupFile $fb.BackupFile
+            $u = [pscustomobject]@{ Id = $u.Id; Status = $u.Status; Message = ('from older backup {0}: {1}' -f $fb.Name, $u.Message) }
+        } elseif ($rid -and $policyMap.ContainsKey($rid)) {
+            $u = Undo-PolicyAction -Policy $policyMap[$rid] -BackupDir $BackupDir -BackupFile $bf
+        } elseif ($rid -and $retiredMap.ContainsKey($rid)) {
+            try {
+                $u = _Undo-RetiredPolicy -Retired $retiredMap[$rid] -BackupDir $BackupDir -BackupFile $bf
+            } catch {
+                $u = [pscustomobject]@{ Id = $rid; Status = 'error'; Message = ('retired-policy revert failed: ' + $_.Exception.Message) }
+            }
+        } elseif ($rid -and $missingTargets.ContainsKey($rid)) {
+            $m = ('[warn] {0}: profile {1} not found or not loadable on this PC - skipped' -f $rid, $missingTargets[$rid])
+            Write-Host $m -ForegroundColor Yellow
+            $m | Out-File -Encoding UTF8 -FilePath $logFile -Append
+            $counters.warn++
+            continue
+        } else {
+            $m = ('[warn] {0}: not in current manifest and not a known retired policy - skipped' -f $rid)
+            Write-Host $m -ForegroundColor Yellow
+            $m | Out-File -Encoding UTF8 -FilePath $logFile -Append
+            $counters.warn++
+            continue
+        }
+        ('[{0,-7}] {1}  {2}' -f $u.Status, $u.Id, $u.Message) | Out-File -Encoding UTF8 -FilePath $logFile -Append
+        Write-Host ('[{0,-7}] {1}  {2}' -f $u.Status, $u.Id, $u.Message)
+        switch ($u.Status) {
+            'ok'      { $counters.ok++ }
+            'warn'    { $counters.warn++ }
+            'error'   { $counters.error++ }
+            'skipped' { $counters.skipped++ }
+        }
+    }
+} finally {
+    foreach ($t in $mounted) {
+        if (-not (Dismount-OAiUserHive -Target $t)) {
+            $m = ('[!] Could not unload the registry hive of {0} (HKEY_USERS\{1}). Restart Windows before {0} signs in, or they may get a temporary profile.' -f $t.Name, $t.Mount)
+            Write-Host $m -ForegroundColor Red
+            $m | Out-File -Encoding UTF8 -FilePath $logFile -Append
+        }
     }
 }
 

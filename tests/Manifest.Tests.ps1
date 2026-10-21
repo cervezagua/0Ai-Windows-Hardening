@@ -108,6 +108,10 @@ Describe '0AI manifest schema' {
                 $p.Id | Should -Not -BeNullOrEmpty -Because "a policy in $($p._SourceFile) has no Id"
             }
         }
+        It 'no Id contains @ (reserved for per-user copies, -AllUsers)' {
+            $bad = @($script:LiveIds | Where-Object { $_.Contains('@') })
+            $bad.Count | Should -Be 0 -Because "offenders: $($bad -join ', ')"
+        }
         It 'every Id is unique' {
             $dupes = @($script:LiveIds | Group-Object | Where-Object { $_.Count -gt 1 } | ForEach-Object { $_.Name })
             $dupes.Count | Should -Be 0 -Because "duplicate Ids: $($dupes -join ', ')"
