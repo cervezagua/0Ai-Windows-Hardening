@@ -1,5 +1,5 @@
 #
-# 0AI v2.14.5 - Verify.ps1
+# 0AI v2.14.6 - Verify.ps1
 #
 # Read-only: queries current state of every manifest policy and prints a
 # table showing Id | Expected | Current | Status.
@@ -79,6 +79,10 @@ foreach ($p in $all) {
                     $current = '(not set)'
                     $status  = 'missing'
                 }
+                if ($status -ne 'match') {
+                    $na = Get-OAiNotApplicableReason -Policy $p
+                    if ($na) { $current = 'n/a: ' + $na; $status = 'n/a' }
+                }
             }
             'Service' {
                 $expected = 'Stopped/Disabled'
@@ -87,8 +91,8 @@ foreach ($p in $all) {
                     $current = ('{0}/{1}' -f $svc.Status, $svc.StartType)
                     if ($svc.Status -eq 'Stopped' -and $svc.StartType -eq 'Disabled') { $status = 'match' } else { $status = 'drift' }
                 } catch {
-                    $current = '(missing)'
-                    $status  = 'missing'
+                    $current = 'n/a: service not installed on this PC'
+                    $status  = 'n/a'
                 }
             }
             'AppxRemove' {
@@ -155,10 +159,17 @@ foreach ($p in $all) {
 
 $rows | Format-Table -AutoSize
 Write-Host ''
-Write-Host ('Total: {0}  match: {1}  drift: {2}  missing: {3}  other: {4}' -f `
+Write-Host ('Total: {0}  match: {1}  drift: {2}  missing: {3}  n/a: {4}  other: {5}' -f `
     $rows.Count, `
     @($rows | Where-Object { $_.Status -eq 'match' }).Count, `
     @($rows | Where-Object { $_.Status -eq 'drift' }).Count, `
     @($rows | Where-Object { $_.Status -eq 'missing' }).Count, `
-    @($rows | Where-Object { $_.Status -notin @('match','drift','missing') }).Count)
+    @($rows | Where-Object { $_.Status -eq 'n/a' }).Count, `
+    @($rows | Where-Object { $_.Status -notin @('match','drift','missing','n/a') }).Count)
+$naRows = @($rows | Where-Object { $_.Status -eq 'n/a' })
+if ($naRows.Count -gt 0) {
+    Write-Host ''
+    Write-Host 'n/a (cannot apply on this PC; not a failure):'
+    foreach ($r in $naRows) { Write-Host ('  {0}: {1}' -f $r.Id, ($r.Current -replace '^n/a: ', '')) }
+}
 exit 0

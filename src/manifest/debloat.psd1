@@ -30,6 +30,10 @@
         Hive        = 'HKLM'
         Key         = 'SOFTWARE\Policies\Microsoft\Dsh'
         Value       = 'AllowNewsAndInterests'
+        # Windows 11's UserChoice Protection Driver (UCPD) refuses scripted
+        # writes to this value; Group Policy can still set it.
+        UcpdProtected = $true
+        GroupPolicy = 'Computer Configuration > Administrative Templates > Windows Components > Widgets > Allow widgets = Disabled (Pro/Enterprise/Education)'
         Type        = 'DWord'
         Data        = 0
         DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-newsandinterests'
