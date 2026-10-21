@@ -599,5 +599,165 @@
         Confidence  = 'Community'
         Reversible  = $true
         Destructive = $false
+    },
+
+    # ---- [A8a] Edge AI features (v2.15.0; Microsoft Edge policy reference) ----
+    # Entra-only ones affect work/school (Entra ID) Edge profiles, not personal
+    # Microsoft accounts; they are harmless elsewhere.
+    @{
+        Id          = 'AI.Edge.CopilotPageContext'
+        Category    = 'AI'
+        Group       = 'reg-safe'
+        Description = 'Edge: Copilot cannot read page content (work/school Entra profiles only; Edge 124+)'
+        MinBuild    = 0
+        Kind        = 'Registry'
+        Hive        = 'HKLM'
+        Key         = 'SOFTWARE\Policies\Microsoft\Edge'
+        Value       = 'CopilotPageContext'
+        Type        = 'DWord'
+        Data        = 0
+        DocUrl      = 'https://learn.microsoft.com/deployedge/microsoft-edge-browser-policies/copilotpagecontext'
+        Confidence  = 'Documented'
+        Reversible  = $true
+        Destructive = $false
+    },
+    @{
+        Id          = 'AI.Edge.Microsoft365CopilotChatIconEnabled'
+        Category    = 'AI'
+        Group       = 'reg-safe'
+        Description = 'Edge: hide the Microsoft 365 Copilot icon in the toolbar (Entra profiles only; Edge 139+)'
+        MinBuild    = 0
+        Kind        = 'Registry'
+        Hive        = 'HKLM'
+        Key         = 'SOFTWARE\Policies\Microsoft\Edge'
+        Value       = 'Microsoft365CopilotChatIconEnabled'
+        Type        = 'DWord'
+        Data        = 0
+        DocUrl      = 'https://learn.microsoft.com/deployedge/microsoft-edge-browser-policies/microsoft365copilotchaticonenabled'
+        Confidence  = 'Documented'
+        Reversible  = $true
+        Destructive = $false
+    },
+    @{
+        Id          = 'AI.Edge.EdgeEntraCopilotPageContext'
+        Category    = 'AI'
+        Group       = 'reg-safe'
+        Description = 'Edge: Copilot cannot use page content, history or video transcripts (Entra profiles only; Edge 130+)'
+        MinBuild    = 0
+        Kind        = 'Registry'
+        Hive        = 'HKLM'
+        Key         = 'SOFTWARE\Policies\Microsoft\Edge'
+        Value       = 'EdgeEntraCopilotPageContext'
+        Type        = 'DWord'
+        Data        = 0
+        DocUrl      = 'https://learn.microsoft.com/deployedge/microsoft-edge-browser-policies/edgeentracopilotpagecontext'
+        Confidence  = 'Documented'
+        Reversible  = $true
+        Destructive = $false
+    },
+    @{
+        Id          = 'AI.Edge.ComposeInlineEnabled'
+        Category    = 'AI'
+        Group       = 'reg-safe'
+        Description = 'Edge: turn off Microsoft 365 Copilot inline Rewrite help (Entra profiles only; Edge 115+)'
+        MinBuild    = 0
+        Kind        = 'Registry'
+        Hive        = 'HKLM'
+        Key         = 'SOFTWARE\Policies\Microsoft\Edge'
+        Value       = 'ComposeInlineEnabled'
+        Type        = 'DWord'
+        Data        = 0
+        DocUrl      = 'https://learn.microsoft.com/deployedge/microsoft-edge-browser-policies/composeinlineenabled'
+        Confidence  = 'Documented'
+        Reversible  = $true
+        Destructive = $false
+    },
+    @{
+        Id          = 'AI.Edge.EdgeHistoryAISearchEnabled'
+        Category    = 'AI'
+        Group       = 'reg-safe'
+        Description = 'Edge: AI-powered history search off, exact-match only (Edge 138+)'
+        MinBuild    = 0
+        Kind        = 'Registry'
+        Hive        = 'HKLM'
+        Key         = 'SOFTWARE\Policies\Microsoft\Edge'
+        Value       = 'EdgeHistoryAISearchEnabled'
+        Type        = 'DWord'
+        Data        = 0
+        DocUrl      = 'https://learn.microsoft.com/deployedge/microsoft-edge-browser-policies/edgehistoryaisearchenabled'
+        Confidence  = 'Documented'
+        Reversible  = $true
+        Destructive = $false
+    },
+    @{
+        Id          = 'AI.Edge.NewTabPageBingChatEnabled'
+        Category    = 'AI'
+        Group       = 'reg-safe'
+        Description = 'Edge: remove Bing Chat / Copilot entry points from the new tab page (Edge 117+)'
+        MinBuild    = 0
+        Kind        = 'Registry'
+        Hive        = 'HKLM'
+        Key         = 'SOFTWARE\Policies\Microsoft\Edge'
+        Value       = 'NewTabPageBingChatEnabled'
+        Type        = 'DWord'
+        Data        = 0
+        DocUrl      = 'https://learn.microsoft.com/deployedge/microsoft-edge-browser-policies/newtabpagebingchatenabled'
+        Confidence  = 'Documented'
+        Reversible  = $true
+        Destructive = $false
+    },
+    @{
+        Id          = 'AI.Edge.GenAILocalFoundationalModelSettings'
+        Category    = 'AI'
+        Group       = 'reg-safe'
+        Description = 'Edge: do not download the on-device GenAI model, delete any existing copy (all profiles; Edge 132+)'
+        MinBuild    = 0
+        Kind        = 'Registry'
+        Hive        = 'HKLM'
+        Key         = 'SOFTWARE\Policies\Microsoft\Edge'
+        Value       = 'GenAILocalFoundationalModelSettings'
+        Type        = 'DWord'
+        Data        = 1
+        DocUrl      = 'https://learn.microsoft.com/deployedge/microsoft-edge-browser-policies/genailocalfoundationalmodelsettings'
+        Confidence  = 'Documented'
+        Reversible  = $true
+        Destructive = $false
+    },
+
+    # ---- [A2b] Recall / Click to Do at user scope (v2.15.0) ----
+    # The WindowsAI CSP documents both Device and User scope for these.
+    @{
+        Id          = 'AI.WindowsAI.DisableAIDataAnalysis.HKCU'
+        Category    = 'AI'
+        Group       = 'reg-safe'
+        Description = 'Disable saving Recall snapshots for this user (user scope of DisableAIDataAnalysis)'
+        MinBuild    = 0
+        Kind        = 'Registry'
+        Hive        = 'HKCU'
+        Key         = 'Software\Policies\Microsoft\Windows\WindowsAI'
+        Value       = 'DisableAIDataAnalysis'
+        Type        = 'DWord'
+        Data        = 1
+        DocUrl      = 'https://learn.microsoft.com/windows/client-management/manage-recall'
+        Confidence  = 'Documented'
+        Reversible  = $true
+        Destructive = $false
+    },
+    @{
+        Id          = 'AI.WindowsAI.DisableClickToDo.HKCU'
+        Category    = 'AI'
+        Group       = 'reg-safe'
+        Description = 'Disable Click to Do for this user (user scope; Copilot+ PCs)'
+        MinBuild    = 0
+        Kind        = 'Registry'
+        Hive        = 'HKCU'
+        Key         = 'Software\Policies\Microsoft\Windows\WindowsAI'
+        Value       = 'DisableClickToDo'
+        Type        = 'DWord'
+        Data        = 1
+        DocUrl      = 'https://learn.microsoft.com/windows/client-management/manage-click-to-do'
+        Confidence  = 'Documented'
+        Reversible  = $true
+        Destructive = $false
     }
 )

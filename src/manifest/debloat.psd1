@@ -74,5 +74,23 @@
         Confidence  = 'Documented'
         Reversible  = $false
         Destructive = $true
+    },
+
+    # ---- [D5] AI Hub app (v2.15.0) ----
+    # Not described by Microsoft; removed only when DEBLOAT is chosen.
+    @{
+        Id          = 'DEBLOAT.Appx.AIHub'
+        Category    = 'DEBLOAT'
+        Group       = 'appx'
+        Description = 'Remove the AI Hub app (Microsoft.Windows.AIHub, installed + provisioned)'
+        MinBuild    = 0
+        Kind        = 'AppxRemove'
+        NamePattern = 'Microsoft\.Windows\.AIHub'
+        AllUsers    = $true
+        Provisioned = $true
+        DocUrl      = ''
+        Confidence  = 'Community'
+        Reversible  = $false
+        Destructive = $true
     }
 )
