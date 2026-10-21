@@ -145,8 +145,60 @@ function _Sanitize-Filename {
 }
 
 # ---------------------------------------------------------------------------
-# Test-Precondition
+# Get-OAiNotApplicableReason
+#   Why a policy cannot apply on this PC, or '' if it can. Apply skips with
+#   this reason and Verify reports it as n/a rather than "missing".
+#     - Kind=Service, or RequiresService: the service is not installed
+#       (e.g. IsoEnvBroker only exists with experimental agentic features).
+#     - UcpdProtected: Windows' UserChoice Protection Driver (UCPD) blocks
+#       scripted writes to the value, elevated or not; Group Policy can still
+#       set it. The kit does not disable UCPD - it is a Windows protection.
+$script:UcpdActive = $null
+function _Test-UcpdActive {
+    if ($null -ne $script:UcpdActive) { return $script:UcpdActive }
+    $active = $false
+    try {
+        $d = Get-CimInstance -ClassName Win32_SystemDriver -Filter "Name='UCPD'" -ErrorAction Stop
+        if ($d) { $active = ([string]$d.State -eq 'Running') }
+    } catch {
+        try {
+            $start = (Get-ItemProperty -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Services\UCPD' -Name Start -ErrorAction Stop).Start
+            $active = ([int]$start -ne 4)
+        } catch {}
+    }
+    $script:UcpdActive = $active
+    return $active
+}
+
+function _Service-Installed {
+    param([string]$Name)
+    try { $null = Get-Service -Name $Name -ErrorAction Stop; return $true } catch { return $false }
+}
+
+function Get-OAiNotApplicableReason {
+    param([Parameter(Mandatory)] $Policy)
+    if ($Policy.Kind -eq 'Service' -and $Policy.Name -and -not (_Service-Installed $Policy.Name)) {
+        return ('service {0} is not installed on this PC' -f $Policy.Name)
+    }
+    if ($Policy.RequiresService -and -not (_Service-Installed $Policy.RequiresService)) {
+        return ('service {0} is not installed on this PC' -f $Policy.RequiresService)
+    }
+    if ($Policy.UcpdProtected -eq $true -and $Policy.Kind -eq 'Registry' -and (_Test-UcpdActive)) {
+        # Already set (e.g. through Group Policy): nothing is blocked.
+        try {
+            $path = (_Resolve-Hive $Policy.Hive) + '\' + $Policy.Key
+            $cur = (Get-ItemProperty -LiteralPath $path -Name $Policy.Value -ErrorAction Stop).($Policy.Value)
+            if ([string]$cur -eq [string]$Policy.Data) { return '' }
+        } catch {}
+        $msg = 'Windows UCPD blocks scripted writes to this value'
+        if ($Policy.GroupPolicy) { $msg += '; set it with Group Policy: ' + $Policy.GroupPolicy }
+        return $msg
+    }
+    return ''
+}
+
 # ---------------------------------------------------------------------------
+# Test-Precondition
 
 function Test-Precondition {
     [CmdletBinding()]
@@ -355,9 +407,16 @@ function Invoke-PolicyAction {
     $backupFile = ''
 
     try {
+        $na = Get-OAiNotApplicableReason -Policy $Policy
         if (-not (Test-Precondition -Policy $Policy)) {
             $sw.Stop()
-            return (_New-Result -Id $Policy.Id -Status 'skipped' -DurationMs $sw.ElapsedMilliseconds -Message 'already applied or precondition not met')
+            $why = 'already applied or precondition not met'
+            if ($na) { $why = $na }
+            return (_New-Result -Id $Policy.Id -Status 'skipped' -DurationMs $sw.ElapsedMilliseconds -Message $why)
+        }
+        if ($na) {
+            $sw.Stop()
+            return (_New-Result -Id $Policy.Id -Status 'skipped' -DurationMs $sw.ElapsedMilliseconds -Message $na)
         }
 
         $backupFile = Backup-PolicyState -Policy $Policy -BackupDir $BackupDir
@@ -820,4 +879,4 @@ function Get-OAiInteractiveUser {
     }
 }
 
-Export-ModuleMember -Function Invoke-PolicyAction, Test-Precondition, Backup-PolicyState, Undo-PolicyAction, Get-OAiInteractiveUser
+Export-ModuleMember -Function Invoke-PolicyAction, Test-Precondition, Backup-PolicyState, Undo-PolicyAction, Get-OAiInteractiveUser, Get-OAiNotApplicableReason

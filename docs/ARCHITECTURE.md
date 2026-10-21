@@ -55,7 +55,13 @@ Each change is represented by a hashtable record in a `.psd1` file under
 Kind-specific fields:
 
 - **Registry** – `Hive` (`HKLM`/`HKCU`), `Key`, `Value`, `Type`, `Data`
+  - optional `RequiresService`: apply only where that service is installed
+    (otherwise Apply skips and Verify reports `n/a`)
+  - optional `UcpdProtected = $true` + `GroupPolicy`: Windows' UCPD driver
+    blocks scripted writes to the value; Apply skips with the Group Policy
+    route while UCPD runs and the value isn't set, Verify reports `n/a`
 - **Service** – `Name`, `State='Stopped'`, `StartupType='Disabled'`
+  - a service that isn't installed is skipped (Apply) and `n/a` (Verify)
 - **AppxRemove** – `NamePattern` (regex), `AllUsers`, `Provisioned`
 - **DefenderPref** – `Preference` (e.g. `PUAProtection`), `Value`
 - **DefenderAsr** – `RuleId` (GUID), `Action` (`Enabled`/`Disabled`)

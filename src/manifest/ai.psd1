@@ -253,6 +253,9 @@
         Hive        = 'HKLM'
         Key         = 'SYSTEM\CurrentControlSet\Services\IsoEnvBroker'
         Value       = 'Enabled'
+        # Only where the service exists: otherwise this would create a
+        # service key for a service that is not installed.
+        RequiresService = 'IsoEnvBroker'
         Type        = 'DWord'
         Data        = 0
         DocUrl      = 'https://support.microsoft.com/windows/experimental-agentic-features-a25ede8a-e4c2-4841-85a8-44839191dfb3'

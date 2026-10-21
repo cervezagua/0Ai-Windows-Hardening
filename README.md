@@ -1,7 +1,7 @@
 # 0AI - Windows Hardening Kit
 
 ### Windows 11 Privacy, AI Disablement & Security Hardening
-**Version:** `v2.14.5`
+**Version:** `v2.14.6`
 
 **Supported baselines:** Windows 11 25H2 (OS Build **26200.9711+**) and 26H2
 (OS Build **26300.9711+**), through the **October 13 2026 Patch Tuesday
@@ -98,6 +98,43 @@ the manifest. No changes.
 reinstalled by `Revert.ps1`. Opt in only if you're comfortable with that.
 
 ---
+
+## What's new in v2.14.6
+
+**Verify's two "missing" entries explained, and no longer counted as missing.**
+
+- **`DEBLOAT.Dsh.AllowNewsAndInterests` is blocked by Windows, not by key
+  permissions.** Windows 11's *UserChoice Protection Driver* (UCPD,
+  `ucpd.sys`) refuses scripted writes to this one value, elevated or not.
+  `AllowWidgets` in the same key goes through, which is how we know: registry
+  permissions are per key, not per value. Group Policy can still set it:
+  **Computer Configuration > Administrative Templates > Windows Components >
+  Widgets > Allow widgets = Disabled** (Pro, Enterprise and Education; Home
+  has no Group Policy editor).
+  - When UCPD is running and the value isn't set, Apply now skips this policy
+    with that explanation instead of attempting the write and warning
+    "access denied".
+  - Verify reports it as `n/a`. Once Group Policy sets it, Verify shows
+    `match`.
+  - The kit does not turn UCPD off: it is a Windows protection component,
+    and disabling it is the kind of security tampering this kit avoids.
+  - Widgets themselves stay off anyway when DEBLOAT removed the Widgets app
+    and `AllowWidgets = 0` is set.
+- **`AI.Service.IsoEnvBroker`: the service isn't installed.** It only ships
+  with Windows' experimental agentic features, which many 25H2/26H2 PCs don't
+  have. Apply already skipped it, but Verify reported `(missing)`.
+  - Apply now says *"service IsoEnvBroker is not installed on this PC"*.
+  - Verify reports `n/a` and lists every `n/a` with its reason under the
+    summary, which now has an `n/a` count.
+- **`AI.IsoEnvBroker.Enabled` is only written where the service exists**
+  (new manifest field `RequiresService`). Before, it created
+  `HKLM\SYSTEM\CurrentControlSet\Services\IsoEnvBroker` holding just
+  `Enabled = 0` on PCs without the service. Windows ignores such a key, but
+  it shouldn't be there; see *Locked registry keys* for a safe way to remove
+  it.
+- New manifest fields `RequiresService`, `UcpdProtected` and `GroupPolicy`,
+  with schema checks. The reasons are tested in `tests/NotApplicable.Tests.ps1`
+  (72 tests in total).
 
 ## What's new in v2.14.5
 
@@ -575,7 +612,10 @@ That left one honest failure behind. `DEBLOAT.Dsh.AllowNewsAndInterests`
 still reports `[WARN] ... unauthorized operation` **with antivirus out of
 the picture**, so it is a real permission denial on
 `HKLM\SOFTWARE\Policies\Microsoft\Dsh` — not AV, and not the value-type
-mismatch that v2.9.2 added a retry for.
+mismatch that v2.9.2 added a retry for. (Corrected in v2.14.6: it is not
+the key's permissions either. Windows' UserChoice Protection Driver (UCPD)
+blocks scripted writes to that one value; `AllowWidgets` in the same key
+writes fine. Group Policy can set it; see the v2.14.6 notes.)
 
 - **Access-denied warnings now explain themselves.** For registry policies
   the message gains a `| key ACL: ...` suffix reporting the key's **owner**,
@@ -1062,20 +1102,49 @@ permissions are set **per key**. Common causes:
   never granted write access.
 - Endpoint security software is guarding the key.
 
+**If another value in the same key writes fine, the key's permissions are
+not the cause**: Windows has no per-value permissions. Something is
+filtering that one value instead:
+
+- **Windows' UserChoice Protection Driver (UCPD)**, which blocks scripted
+  writes to `Dsh\AllowNewsAndInterests` (and to default-app choices). The kit
+  recognises this case: it skips that policy with the Group Policy route
+  (*Windows Components > Widgets > Allow widgets = Disabled*) and Verify shows
+  `n/a`. The kit does not disable UCPD.
+- Endpoint security software with registry protection; its own log names
+  the blocked value.
+
 **The kit deliberately does not take ownership or rewrite ACLs to force the
 write.** Seizing ownership of a protected key is a defense-evasion technique
 — it is what the antivirus fixes in v2.9.1 and v2.9.4 were about, and doing
 it here would re-earn the malware classification for a cosmetic win.
 
-If you want the setting applied, inspect it yourself first:
+If you want the setting applied, inspect the key yourself first (use the key
+the warning names):
 
 ```powershell
-Get-Acl 'HKLM:\SOFTWARE\Policies\Microsoft\Dsh' | Format-List Owner, AccessToString
+Get-Acl 'HKLM:\SOFTWARE\Policies\<key from the warning>' | Format-List Owner, AccessToString
 ```
 
 Then decide consciously whether to grant Administrators write access via
 `regedit` (right-click the key → **Permissions**). A single skipped
-`[WARN]` policy is not a failed run — the other 95 still applied.
+`[WARN]` policy is not a failed run — every other policy still applied.
+
+**Leftover `IsoEnvBroker` key (v2.14.5 and earlier).** On PCs without the
+IsoEnvBroker service, older versions created
+`HKLM\SYSTEM\CurrentControlSet\Services\IsoEnvBroker` holding only
+`Enabled = 0`. Windows ignores it. To remove it, run this in an elevated
+PowerShell; it deletes the key only when it really is just that leftover:
+
+```powershell
+$k = 'HKLM:\SYSTEM\CurrentControlSet\Services\IsoEnvBroker'
+if ((Test-Path $k) -and -not (Get-Service IsoEnvBroker -ErrorAction SilentlyContinue)) {
+  $names = @((Get-Item $k).Property)
+  if (($names.Count -eq 1) -and ($names[0] -eq 'Enabled') -and (@(Get-ChildItem $k).Count -eq 0)) {
+    Remove-Item $k; 'removed leftover IsoEnvBroker key'
+  } else { 'key has other content - left alone' }
+} else { 'nothing to remove' }
+```
 
 ---
 
@@ -1122,7 +1191,7 @@ Windows installs.
 |                            + shared manifest loader (OAi.Manifest.psm1)
 |                            + admin-only backup folders (OAi.BackupAcl.psm1)
 |                            + snapshots from older backups (OAi.BackupHistory.psm1)
-|-- tests/Manifest.Tests.ps1, BackupAcl.Tests.ps1, BackupHistory.Tests.ps1, Modules.Tests.ps1
+|-- tests/Manifest.Tests.ps1, BackupAcl.Tests.ps1, BackupHistory.Tests.ps1, Modules.Tests.ps1, NotApplicable.Tests.ps1
 |-- docs/ARCHITECTURE.md
 |-- legacy/                  v2.2 .bat scripts, preserved for reference
 `-- README.md                (this file)

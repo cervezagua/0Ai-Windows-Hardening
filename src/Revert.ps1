@@ -1,5 +1,5 @@
 #
-# 0AI v2.14.5 - Revert.ps1
+# 0AI v2.14.6 - Revert.ps1
 #
 # Finds the newest trusted backup under $env:ProgramData\0AI_Backups\<SID>
 # (then the pre-v2.14.2 $env:USERPROFILE\0AI_Backups, or a user-specified

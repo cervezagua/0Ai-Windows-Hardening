@@ -177,6 +177,14 @@ Describe '0AI manifest schema' {
                 })
             $msgs.Count | Should -Be 0 -Because "colliding registry targets: $($msgs -join '; ')"
         }
+        It 'RequiresService, UcpdProtected and GroupPolicy are well-formed where present' {
+            $bad = @(foreach ($p in $script:Registry) {
+                    if ($p.ContainsKey('RequiresService') -and -not ($p.RequiresService -is [string] -and $p.RequiresService.Length -gt 0)) { '{0}: RequiresService' -f $p.Id }
+                    if ($p.ContainsKey('UcpdProtected') -and -not ($p.UcpdProtected -is [bool])) { '{0}: UcpdProtected is not [bool]' -f $p.Id }
+                    if ($p.UcpdProtected -eq $true -and -not ($p.GroupPolicy -is [string] -and $p.GroupPolicy.Length -gt 0)) { '{0}: UcpdProtected needs a GroupPolicy path' -f $p.Id }
+                })
+            $bad.Count | Should -Be 0 -Because "offenders: $($bad -join ', ')"
+        }
         It 'no Value name contains wildcard characters (* ? [ ])' {
             # Undo passes Value to -Name, which treats these as wildcards.
             $bad = @($script:Registry | Where-Object { [string]$_.Value -match '[\*\?\[\]]' } |
