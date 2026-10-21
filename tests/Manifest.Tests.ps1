@@ -16,8 +16,8 @@ Describe '0AI manifest schema' {
 
     BeforeAll {
         $ValidCategories  = @('AI','PRIV','HARD','DEBLOAT','AUDIT')
-        $ValidGroups      = @('reg-safe','sc-safe','appx','defender','mitigation','folder','report')
-        $ValidKinds       = @('Registry','Service','AppxRemove','DefenderPref','DefenderAsr','Mitigation','FolderPurge','Report')
+        $ValidGroups      = @('reg-safe','sc-safe','task','appx','defender','mitigation','folder','report')
+        $ValidKinds       = @('Registry','Service','ScheduledTask','AppxRemove','DefenderPref','DefenderAsr','Mitigation','FolderPurge','Report')
         $ValidConfidence  = @('Documented','BestEffort','Community')
         $ValidHives       = @('HKLM','HKCU')
         $ValidRegTypes    = @('DWord','QWord','String','ExpandString','MultiString','Binary')
@@ -108,6 +108,10 @@ Describe '0AI manifest schema' {
                 $p.Id | Should -Not -BeNullOrEmpty -Because "a policy in $($p._SourceFile) has no Id"
             }
         }
+        It 'no Id contains @ (reserved for per-user copies, -AllUsers)' {
+            $bad = @($script:LiveIds | Where-Object { $_.Contains('@') })
+            $bad.Count | Should -Be 0 -Because "offenders: $($bad -join ', ')"
+        }
         It 'every Id is unique' {
             $dupes = @($script:LiveIds | Group-Object | Where-Object { $_.Count -gt 1 } | ForEach-Object { $_.Name })
             $dupes.Count | Should -Be 0 -Because "duplicate Ids: $($dupes -join ', ')"
@@ -177,6 +181,15 @@ Describe '0AI manifest schema' {
                 })
             $msgs.Count | Should -Be 0 -Because "colliding registry targets: $($msgs -join '; ')"
         }
+        It 'MinBuild / MaxBuild are non-negative integers, MaxBuild >= MinBuild' {
+            $bad = @(foreach ($p in $script:Policies) {
+                    foreach ($f in 'MinBuild', 'MaxBuild') {
+                        if ($p.ContainsKey($f) -and -not ($p[$f] -is [int] -and $p[$f] -ge 0)) { '{0}: {1}' -f $p.Id, $f }
+                    }
+                    if ($p.MaxBuild -and $p.MinBuild -and $p.MaxBuild -lt $p.MinBuild) { '{0}: MaxBuild < MinBuild' -f $p.Id }
+                })
+            $bad.Count | Should -Be 0 -Because "offenders: $($bad -join ', ')"
+        }
         It 'RequiresService, UcpdProtected and GroupPolicy are well-formed where present' {
             $bad = @(foreach ($p in $script:Registry) {
                     if ($p.ContainsKey('RequiresService') -and -not ($p.RequiresService -is [string] -and $p.RequiresService.Length -gt 0)) { '{0}: RequiresService' -f $p.Id }
@@ -189,6 +202,17 @@ Describe '0AI manifest schema' {
             # Undo passes Value to -Name, which treats these as wildcards.
             $bad = @($script:Registry | Where-Object { [string]$_.Value -match '[\*\?\[\]]' } |
                 ForEach-Object { '{0} (Value={1})' -f $_.Id, $_.Value })
+            $bad.Count | Should -Be 0 -Because "offenders: $($bad -join ', ')"
+        }
+    }
+
+    Context 'Kind=ScheduledTask' {
+        It 'has a \-delimited TaskPath and a TaskName, in Group=task' {
+            $bad = @(foreach ($p in @($script:Policies | Where-Object { $_.Kind -eq 'ScheduledTask' })) {
+                    if (-not ($p.TaskPath -is [string] -and $p.TaskPath.StartsWith('\') -and $p.TaskPath.EndsWith('\'))) { '{0}: TaskPath' -f $p.Id }
+                    if (-not ($p.TaskName -is [string] -and $p.TaskName.Length -gt 0)) { '{0}: TaskName' -f $p.Id }
+                    if ($p.Group -ne 'task') { '{0}: Group' -f $p.Id }
+                })
             $bad.Count | Should -Be 0 -Because "offenders: $($bad -join ', ')"
         }
     }

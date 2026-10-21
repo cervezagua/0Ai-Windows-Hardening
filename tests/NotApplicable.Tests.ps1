@@ -53,4 +53,46 @@ Describe '0AI not-applicable reasons' {
             Get-OAiNotApplicableReason -Policy $p | Should -Be ''
         }
     }
+
+    Context 'build gates' {
+        It 'below MinBuild' {
+            Mock -ModuleName OAi.Engine _Get-CurrentBuild { 26100 }
+            Get-OAiNotApplicableReason -Policy @{ Id = 'B'; Kind = 'Registry'; MinBuild = 26200 } | Should -Match 'needs Windows build 26200 or later; this PC is 26100'
+        }
+        It 'above MaxBuild' {
+            Mock -ModuleName OAi.Engine _Get-CurrentBuild { 26300 }
+            Get-OAiNotApplicableReason -Policy @{ Id = 'B'; Kind = 'Registry'; MaxBuild = 26200 } | Should -Match 'up to Windows build 26200'
+        }
+        It 'inside the range, or build unknown' {
+            Mock -ModuleName OAi.Engine _Get-CurrentBuild { 26200 }
+            Get-OAiNotApplicableReason -Policy @{ Id = 'B'; Kind = 'Registry'; MinBuild = 26100; MaxBuild = 26300 } | Should -Be ''
+            Mock -ModuleName OAi.Engine _Get-CurrentBuild { 0 }
+            Get-OAiNotApplicableReason -Policy @{ Id = 'B'; Kind = 'Registry'; MinBuild = 99999 } | Should -Be ''
+        }
+    }
+
+    Context 'scheduled tasks' {
+        It 'a task that does not exist' {
+            Mock -ModuleName OAi.Engine _Get-Task { $null }
+            Get-OAiNotApplicableReason -Policy @{ Id = 'T'; Kind = 'ScheduledTask'; TaskPath = '\Microsoft\Windows\X\'; TaskName = 'Y' } |
+                Should -Be 'scheduled task \Microsoft\Windows\X\Y does not exist on this PC'
+        }
+        It 'nothing when it exists' {
+            Mock -ModuleName OAi.Engine _Get-Task { [pscustomobject]@{ State = 'Ready' } }
+            Get-OAiNotApplicableReason -Policy @{ Id = 'T'; Kind = 'ScheduledTask'; TaskPath = '\A\'; TaskName = 'B' } | Should -Be ''
+        }
+    }
+
+    Context 'backup file names stay short (MAX_PATH on Windows PowerShell 5.1)' {
+        It 'leaves short names alone and shortens long ones to a stable 100-char name' {
+            InModuleScope OAi.Engine {
+                _Short-Name 'reg_HKLM_x' | Should -Be 'reg_HKLM_x'
+                $long = 'HKCU@S-1-5-21-1234567890-1234567890-1234567890-12345_Software_Microsoft_Windows_CurrentVersion_Shell_Extensions_Blocked__CB3B0003-8088-4EDE-8769-8B354AB2FF8C_'
+                $a = _Short-Name $long
+                $a.Length | Should -Be 100
+                $a | Should -Be (_Short-Name $long)
+                $a | Should -Not -Be (_Short-Name ($long + 'x'))
+            }
+        }
+    }
 }

@@ -1,5 +1,5 @@
 #
-# 0AI v2.14.6 - Snapshot-AIShellVerbs.ps1
+# 0AI v2.15.0 - Snapshot-AIShellVerbs.ps1
 #
 # Read-only diagnostic. Enumerates the shell verbs and COM registrations
 # that Microsoft uses to expose the "AI actions" submenu when you
@@ -17,6 +17,14 @@
 param()
 
 $ErrorActionPreference = 'Continue'
+
+# ---- Full language mode required ----
+# Under Constrained Language Mode (WDAC / AppLocker policies) the .NET calls
+# the kit relies on fail midway; stop cleanly instead.
+if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') {
+    Write-Host ('[!] PowerShell is in {0} mode (set by an application-control policy). 0AI needs FullLanguage mode; nothing was changed.' -f $ExecutionContext.SessionState.LanguageMode) -ForegroundColor Red
+    exit 1
+}
 
 # ---- Culture invariance (must run before any other work) ----
 # PowerShell's -match / -replace / -like fold case using the CURRENT culture.

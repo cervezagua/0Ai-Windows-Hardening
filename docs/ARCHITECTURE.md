@@ -61,6 +61,11 @@ Kind-specific fields:
     blocks scripted writes to the value; Apply skips with the Group Policy
     route while UCPD runs and the value isn't set, Verify reports `n/a`
 - **Service** – `Name`, `State='Stopped'`, `StartupType='Disabled'`
+- **ScheduledTask** – `TaskPath` (`\…\`), `TaskName`; Group `task`.
+  Disabled on apply; Revert re-enables only if it was enabled before; a
+  missing task is skipped (Apply) and `n/a` (Verify)
+- Any Kind: optional `MinBuild` / `MaxBuild` build gates (reported as `n/a`
+  with the reason)
   - a service that isn't installed is skipped (Apply) and `n/a` (Verify)
 - **AppxRemove** – `NamePattern` (regex), `AllUsers`, `Provisioned`
 - **DefenderPref** – `Preference` (e.g. `PUAProtection`), `Value`
@@ -120,6 +125,8 @@ guarded by `$PSVersionTable.PSVersion.Major -ge 7` checks. None are required.
 |       +-- OAi.Manifest.psm1     shared manifest + retired-list loader, -Select check
 |       +-- OAi.BackupAcl.psm1    lock backup folders admin-only; Revert's check
 |       +-- OAi.BackupHistory.psm1 pick snapshots from older backups for skipped policies
+|       +-- OAi.System.psm1       restore-point outcome, domain-joined note
+|       +-- OAi.Users.psm1        -AllUsers: profile targets, per-user copies, hive load/unload
 |       +-- OAi.Engine.psm1       primitives (Invoke/Test/Backup/Undo)
 |       +-- OAi.Runner.psm1       orchestration + parallelism
 |       +-- OAi.UI.Console.psm1   live progress display
@@ -253,6 +260,22 @@ serialized to `run.json`.
    - AppxRemove → **no-op** (matches v2.2 by design)
    - FolderPurge → **no-op** (destructive, documented)
    - Report → no-op
+
+## 8a. Per-user policies for all profiles (`-AllUsers`)
+
+`OAi.Users.psm1` lists profiles from
+`HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList`: real
+accounts (`S-1-5-21-*`) other than the one running the kit, plus the Default
+profile. A signed-in user's hive is reached as `HKEY_USERS\<SID>`; others are
+loaded with `reg.exe load HKEY_USERS\0AI_<SID|Default>` and unloaded in a
+`finally` (with GC and retries; a failed unload is reported).
+
+Each HKCU Registry policy gets a copy per profile: Id `<Id>@<label>`, Hive
+`HKU`, Key `<mount>\<Key>`, Group `user` (serial). Its snapshot records
+`HKCU@<label>` and the plain Key (`SnapshotHive` / `SnapshotKey`), not the
+mount, so Revert matches it whether the user is signed in or not. Revert
+rebuilds the copies from the Ids in `run.json`, loading only the hives it
+needs. `@` is reserved: manifest Ids may not contain it (schema test).
 
 ## 9. Non-goals
 

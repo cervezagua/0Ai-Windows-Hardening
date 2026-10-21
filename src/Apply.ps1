@@ -1,5 +1,5 @@
 #
-# 0AI v2.14.6 - Apply.ps1
+# 0AI v2.15.0 - Apply.ps1
 #
 # Entry point for applying privacy / AI-disablement / hardening policies.
 #
@@ -9,6 +9,7 @@
 #   -Select <string[]>      Run only named policy IDs (overrides categories)
 #   -BackupRoot <string>    Default: $env:ProgramData\0AI_Backups\<account SID>
 #   -AllowUnlockedBackup    Continue if the backup folder cannot be made admin-only
+#   -AllUsers               HKCU policies also for every other profile + the Default profile
 #
 
 [CmdletBinding()]
@@ -19,11 +20,22 @@ param(
     [string]$BackupRoot = '',
     # Continue when the backup folder cannot be made admin-only (FAT drive,
     # some network shares). Revert will then ask before trusting it.
-    [switch]$AllowUnlockedBackup
+    [switch]$AllowUnlockedBackup,
+    # Also apply per-user (HKCU) policies to every other local profile and
+    # to the Default profile, which seeds accounts created later.
+    [switch]$AllUsers
 )
 
 # StrictMode disabled for hashtable-heavy manifest handling
 $ErrorActionPreference = 'Stop'
+
+# ---- Full language mode required ----
+# Under Constrained Language Mode (WDAC / AppLocker policies) the .NET calls
+# the kit relies on fail midway; stop cleanly instead.
+if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') {
+    Write-Host ('[!] PowerShell is in {0} mode (set by an application-control policy). 0AI needs FullLanguage mode; nothing was changed.' -f $ExecutionContext.SessionState.LanguageMode) -ForegroundColor Red
+    exit 1
+}
 
 # ---- Culture invariance (must run before any other work) ----
 # PowerShell's -match / -replace / -like fold case using the CURRENT culture.
@@ -72,6 +84,7 @@ $manifestDir = Join-Path $thisDir 'manifest'
 Import-Module (Join-Path $moduleDir 'OAi.Version.psm1') -Force
 Import-Module (Join-Path $moduleDir 'OAi.Manifest.psm1') -Force
 Import-Module (Join-Path $moduleDir 'OAi.BackupAcl.psm1') -Force
+Import-Module (Join-Path $moduleDir 'OAi.System.psm1') -Force
 
 # ---- Backup folder ----
 # Revert trusts these files with admin rights, so they must be beyond the
@@ -152,6 +165,7 @@ Import-Module (Join-Path $moduleDir 'OAi.Runner.psm1')    -Force
 Import-Module (Join-Path $moduleDir 'OAi.UI.Console.psm1') -Force
 Import-Module (Join-Path $moduleDir 'OAi.UI.Plan.psm1')    -Force
 Import-Module (Join-Path $moduleDir 'OAi.UI.Launcher.psm1') -Force
+Import-Module (Join-Path $moduleDir 'OAi.Users.psm1')     -Force
 
 # ---- Load manifest ----
 $manifestFiles = Get-ChildItem -Path $manifestDir -Filter '*.psd1' -ErrorAction Stop
@@ -174,7 +188,7 @@ foreach ($mf in $manifestFiles) {
 # command line (automation / CI), skip the menu and honor the params.
 # -BackupRoot / -AllowUnlockedBackup only say where backups go; they do not
 # pick what to apply, so the menu still shows.
-$picks = @($PSBoundParameters.Keys | Where-Object { @('BackupRoot','AllowUnlockedBackup') -notcontains $_ })
+$picks = @($PSBoundParameters.Keys | Where-Object { @('BackupRoot','AllowUnlockedBackup','AllUsers') -notcontains $_ })
 if ($picks.Count -eq 0) {
     $decision = Show-LauncherMenu -Manifest $allPolicies.ToArray()
     switch ($decision.Action) {
@@ -193,10 +207,18 @@ if ($picks.Count -eq 0) {
         'apply' {
             $Categories = $decision.Categories
             $WhatIf     = [bool]$decision.WhatIf
-            ('[+] Launcher selection: Categories={0} WhatIf={1}' -f ($Categories -join ','), $WhatIf) |
+            if ($decision.PSObject.Properties.Name -contains 'AllUsers' -and $decision.AllUsers) { $AllUsers = [switch]$true }
+            ('[+] Launcher selection: Categories={0} WhatIf={1} AllUsers={2}' -f ($Categories -join ','), $WhatIf, [bool]$AllUsers) |
                 Out-File -Encoding UTF8 -FilePath $LogFile -Append
         }
     }
+}
+
+# ---- Domain-joined? ----
+$dn = Get-OAiDomainNote
+if ($dn) {
+    Write-Host ('[!] ' + $dn) -ForegroundColor Yellow
+    ('[!] ' + $dn) | Out-File -Encoding UTF8 -FilePath $LogFile -Append
 }
 
 # ---- Elevated as a different account? ----
@@ -205,7 +227,8 @@ try {
     $interactiveUser = Get-OAiInteractiveUser
     $elevatedUser    = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
     if ($interactiveUser -and -not [string]::Equals($interactiveUser, $elevatedUser, [System.StringComparison]::OrdinalIgnoreCase)) {
-        $um = ('[!] Running as {0}, but {1} is signed in at this desktop. Per-user (HKCU) policies will land in {0}''s profile, not {1}''s. To cover {1}, run the kit while signed in as {1}, using an admin account of their own.' -f $elevatedUser, $interactiveUser)
+        $um = ('[!] Running as {0}, but {1} is signed in at this desktop. Per-user (HKCU) policies will land in {0}''s profile, not {1}''s. To cover {1}, run the kit while signed in as {1}, using an admin account of their own, or use -AllUsers (all profiles).' -f $elevatedUser, $interactiveUser)
+        if ($AllUsers) { $um = ('[i] Running as {0}; {1} is signed in at this desktop. -AllUsers covers {1}''s profile too.' -f $elevatedUser, $interactiveUser) }
         Write-Host $um -ForegroundColor Yellow
         $um | Out-File -Encoding UTF8 -FilePath $LogFile -Append
     }
@@ -237,6 +260,30 @@ if ($Select.Count -gt 0) {
 # ---- Build plan ----
 $plan = New-Plan -Manifest $allPolicies.ToArray() -Categories $Categories -Selected $Select
 
+# ---- -AllUsers: per-user copies of HKCU policies ----
+# Copies are built now (so -WhatIf shows them); hives are only loaded right
+# before execution, never for a dry run.
+$userTargets = @()
+if ($AllUsers) {
+    try { $userTargets = @(Get-OAiUserTargets) } catch {
+        Write-Host ('[!] -AllUsers: could not list user profiles: ' + $_.Exception.Message) -ForegroundColor Yellow
+    }
+    $extra = @(foreach ($t in $userTargets) {
+            foreach ($p in @($plan.Policies)) {
+                $c = New-OAiTargetPolicy -Policy $p -Target $t
+                if ($c) { $c }
+            }
+        })
+    if ($extra.Count -gt 0) {
+        $plan.Policies = @($plan.Policies) + $extra
+        $plan.Count = @($plan.Policies).Count
+    }
+    $m = ('[i] -AllUsers: {0} per-user setting(s) for {1} other profile(s): {2}' -f $extra.Count, $userTargets.Count, (($userTargets | ForEach-Object { $_.Name }) -join ', '))
+    if ($userTargets.Count -eq 0) { $m = '[i] -AllUsers: no other user profiles or Default profile found; only this account is covered.' }
+    Write-Host $m
+    $m | Out-File -Encoding UTF8 -FilePath $LogFile -Append
+}
+
 if ($Categories -notcontains 'DEBLOAT' -and (-not $Select -or $Select.Count -eq 0)) {
     Write-Host '[i] DEBLOAT category excluded by default (destructive Appx removals). Use -Categories AI,PRIV,HARD,DEBLOAT,AUDIT to include.'
 }
@@ -253,28 +300,54 @@ if ($WhatIf) {
 # Created only once the run is certain to change something: after the
 # -Select check and the -WhatIf exit, so a dry run or a rejected Id list
 # does not leave a restore point behind.
-try {
-    Checkpoint-Computer -Description ('0AI_Pre_' + (Get-OAiVersion)) -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop | Out-Null
-    '[+] Restore point created.' | Out-File -Encoding UTF8 -FilePath $LogFile -Append
-} catch {
-    ('[!] Restore point unavailable: ' + $_.Exception.Message) | Out-File -Encoding UTF8 -FilePath $LogFile -Append
-}
+$rp = Invoke-OAiRestorePoint -Description ('0AI_Pre_' + (Get-OAiVersion))
+$rpTag = '[+] '
+if ($rp.Status -ne 'created') { $rpTag = '[!] ' }
+($rpTag + $rp.Message) | Out-File -Encoding UTF8 -FilePath $LogFile -Append
+if ($rp.Status -ne 'created') { Write-Host ($rpTag + $rp.Message) -ForegroundColor Yellow }
 
-# ---- Execute ----
-$queue = New-Object System.Collections.Concurrent.ConcurrentQueue[object]
-$uiState = Start-ConsoleUI -PlanResult $plan -EventQueue $queue
+# ---- Load other users' hives (-AllUsers) ----
+# Inside the try, so whatever is loaded is unloaded in finally, even if a
+# later load fails or the run is interrupted.
+$mounted = @()
 try {
-    $result = Invoke-Plan -Plan $plan -BackupDir $BackupDir -EventQueue $queue
-    Update-ConsoleUI
+    foreach ($t in $userTargets) {
+        if (Mount-OAiUserHive -Target $t) {
+            $mounted += $t
+        } else {
+            $m = ('[!] -AllUsers: could not load the profile of {0} ({1}); its per-user settings are skipped.' -f $t.Name, $t.HivePath)
+            Write-Host $m -ForegroundColor Yellow
+            $m | Out-File -Encoding UTF8 -FilePath $LogFile -Append
+            $plan.Policies = @($plan.Policies | Where-Object { $_.TargetLabel -ne $t.Label })
+            $plan.Count = @($plan.Policies).Count
+        }
+    }
+
+    # ---- Execute ----
+    $queue = New-Object System.Collections.Concurrent.ConcurrentQueue[object]
+    $uiState = Start-ConsoleUI -PlanResult $plan -EventQueue $queue
+    try {
+        $result = Invoke-Plan -Plan $plan -BackupDir $BackupDir -EventQueue $queue
+        Update-ConsoleUI
+    } finally {
+        Stop-ConsoleUI
+    }
+
+    # ---- Persist run.json ----
+    try {
+        $result | ConvertTo-Json -Depth 8 | Out-File -Encoding UTF8 -FilePath $RunJson
+    } catch {
+        ('[!] Failed to write run.json: ' + $_.Exception.Message) | Out-File -Encoding UTF8 -FilePath $LogFile -Append
+    }
 } finally {
-    Stop-ConsoleUI
-}
-
-# ---- Persist run.json ----
-try {
-    $result | ConvertTo-Json -Depth 8 | Out-File -Encoding UTF8 -FilePath $RunJson
-} catch {
-    ('[!] Failed to write run.json: ' + $_.Exception.Message) | Out-File -Encoding UTF8 -FilePath $LogFile -Append
+    # Unload what we loaded, whatever happened above.
+    foreach ($t in $mounted) {
+        if (-not (Dismount-OAiUserHive -Target $t)) {
+            $m = ('[!] Could not unload the registry hive of {0} (HKEY_USERS\{1}). Restart Windows before {0} signs in, or they may get a temporary profile.' -f $t.Name, $t.Mount)
+            Write-Host $m -ForegroundColor Red
+            $m | Out-File -Encoding UTF8 -FilePath $LogFile -Append
+        }
+    }
 }
 
 # ---- Write verification.txt ----

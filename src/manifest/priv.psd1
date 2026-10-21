@@ -493,5 +493,318 @@
         Confidence  = 'Documented'
         Reversible  = $true
         Destructive = $false
+    },
+
+    # ---- [P20] Edge telemetry and recommendations (v2.15.0) ----
+    @{
+        Id          = 'PRIV.Edge.DiagnosticData'
+        Category    = 'PRIV'
+        Group       = 'reg-safe'
+        Description = 'Edge: send no diagnostic data (0 = off; Microsoft marks this "not recommended" for managed fleets)'
+        MinBuild    = 0
+        Kind        = 'Registry'
+        Hive        = 'HKLM'
+        Key         = 'SOFTWARE\Policies\Microsoft\Edge'
+        Value       = 'DiagnosticData'
+        Type        = 'DWord'
+        Data        = 0
+        DocUrl      = 'https://learn.microsoft.com/deployedge/microsoft-edge-browser-policies/diagnosticdata'
+        Confidence  = 'Documented'
+        Reversible  = $true
+        Destructive = $false
+    },
+    @{
+        Id          = 'PRIV.Edge.PersonalizationReportingEnabled'
+        Category    = 'PRIV'
+        Group       = 'reg-safe'
+        Description = 'Edge: do not send browsing data for ad/news personalisation'
+        MinBuild    = 0
+        Kind        = 'Registry'
+        Hive        = 'HKLM'
+        Key         = 'SOFTWARE\Policies\Microsoft\Edge'
+        Value       = 'PersonalizationReportingEnabled'
+        Type        = 'DWord'
+        Data        = 0
+        DocUrl      = 'https://learn.microsoft.com/deployedge/microsoft-edge-browser-policies/personalizationreportingenabled'
+        Confidence  = 'Documented'
+        Reversible  = $true
+        Destructive = $false
+    },
+    @{
+        Id          = 'PRIV.Edge.ShowRecommendationsEnabled'
+        Category    = 'PRIV'
+        Group       = 'reg-safe'
+        Description = 'Edge: no feature recommendations or assistance notifications'
+        MinBuild    = 0
+        Kind        = 'Registry'
+        Hive        = 'HKLM'
+        Key         = 'SOFTWARE\Policies\Microsoft\Edge'
+        Value       = 'ShowRecommendationsEnabled'
+        Type        = 'DWord'
+        Data        = 0
+        DocUrl      = 'https://learn.microsoft.com/deployedge/microsoft-edge-browser-policies/showrecommendationsenabled'
+        Confidence  = 'Documented'
+        Reversible  = $true
+        Destructive = $false
+    },
+    @{
+        Id          = 'PRIV.Edge.EdgeShoppingAssistantEnabled'
+        Category    = 'PRIV'
+        Group       = 'reg-safe'
+        Description = 'Edge: shopping features off (price comparison, coupons, express checkout)'
+        MinBuild    = 0
+        Kind        = 'Registry'
+        Hive        = 'HKLM'
+        Key         = 'SOFTWARE\Policies\Microsoft\Edge'
+        Value       = 'EdgeShoppingAssistantEnabled'
+        Type        = 'DWord'
+        Data        = 0
+        DocUrl      = 'https://learn.microsoft.com/deployedge/microsoft-edge-browser-policies/edgeshoppingassistantenabled'
+        Confidence  = 'Documented'
+        Reversible  = $true
+        Destructive = $false
+    },
+    @{
+        Id          = 'PRIV.Edge.SpotlightExperiencesAndRecommendationsEnabled'
+        Category    = 'PRIV'
+        Group       = 'reg-safe'
+        Description = 'Edge: Spotlight experiences and recommendations off'
+        MinBuild    = 0
+        Kind        = 'Registry'
+        Hive        = 'HKLM'
+        Key         = 'SOFTWARE\Policies\Microsoft\Edge'
+        Value       = 'SpotlightExperiencesAndRecommendationsEnabled'
+        Type        = 'DWord'
+        Data        = 0
+        DocUrl      = 'https://learn.microsoft.com/deployedge/microsoft-edge-browser-policies/spotlightexperiencesandrecommendationsenabled'
+        Confidence  = 'Documented'
+        Reversible  = $true
+        Destructive = $false
+    },
+
+    # ---- [P21] Desktop Spotlight (v2.15.0) ----
+    # Like most CloudContent policies, honoured on Enterprise/Education only.
+    @{
+        Id          = 'PRIV.CloudContent.DisableSpotlightCollectionOnDesktop'
+        Category    = 'PRIV'
+        Group       = 'reg-safe'
+        Description = 'Turn off Windows Spotlight on the desktop (CloudContent policy; Enterprise/Education only)'
+        MinBuild    = 0
+        Kind        = 'Registry'
+        Hive        = 'HKCU'
+        Key         = 'Software\Policies\Microsoft\Windows\CloudContent'
+        Value       = 'DisableSpotlightCollectionOnDesktop'
+        Type        = 'DWord'
+        Data        = 1
+        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-experience'
+        Confidence  = 'Documented'
+        Reversible  = $true
+        Destructive = $false
+    },
+
+    # ---- [P22] Start / Settings / lock-screen suggestions on Home and Pro (v2.15.0) ----
+    # The CloudContent policies above are honoured only on Enterprise and
+    # Education. On Home and Pro these per-user preferences are what turn the
+    # suggestions off. Microsoft uses them in its VDI optimisation sample
+    # without documenting each value, hence Community.
+    @{
+        Id          = 'PRIV.CDM.SubscribedContent-338388Enabled'
+        Category    = 'PRIV'
+        Group       = 'reg-safe'
+        Description = 'Turn off: Suggestions in Start (ContentDeliveryManager preference)'
+        MinBuild    = 0
+        Kind        = 'Registry'
+        Hive        = 'HKCU'
+        Key         = 'Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'
+        Value       = 'SubscribedContent-338388Enabled'
+        Type        = 'DWord'
+        Data        = 0
+        DocUrl      = 'https://learn.microsoft.com/windows-server/remote/remote-desktop-services/remote-desktop-services-vdi-optimize-configuration'
+        Confidence  = 'Community'
+        Reversible  = $true
+        Destructive = $false
+    },
+    @{
+        Id          = 'PRIV.CDM.SubscribedContent-338389Enabled'
+        Category    = 'PRIV'
+        Group       = 'reg-safe'
+        Description = 'Turn off: Tips and suggestions while using Windows (preference)'
+        MinBuild    = 0
+        Kind        = 'Registry'
+        Hive        = 'HKCU'
+        Key         = 'Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'
+        Value       = 'SubscribedContent-338389Enabled'
+        Type        = 'DWord'
+        Data        = 0
+        DocUrl      = 'https://learn.microsoft.com/windows-server/remote/remote-desktop-services/remote-desktop-services-vdi-optimize-configuration'
+        Confidence  = 'Community'
+        Reversible  = $true
+        Destructive = $false
+    },
+    @{
+        Id          = 'PRIV.CDM.SubscribedContent-338393Enabled'
+        Category    = 'PRIV'
+        Group       = 'reg-safe'
+        Description = 'Turn off: Suggested content in Settings (preference)'
+        MinBuild    = 0
+        Kind        = 'Registry'
+        Hive        = 'HKCU'
+        Key         = 'Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'
+        Value       = 'SubscribedContent-338393Enabled'
+        Type        = 'DWord'
+        Data        = 0
+        DocUrl      = 'https://learn.microsoft.com/windows-server/remote/remote-desktop-services/remote-desktop-services-vdi-optimize-configuration'
+        Confidence  = 'Community'
+        Reversible  = $true
+        Destructive = $false
+    },
+    @{
+        Id          = 'PRIV.CDM.SubscribedContent-353694Enabled'
+        Category    = 'PRIV'
+        Group       = 'reg-safe'
+        Description = 'Turn off: Suggested content in Settings (preference)'
+        MinBuild    = 0
+        Kind        = 'Registry'
+        Hive        = 'HKCU'
+        Key         = 'Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'
+        Value       = 'SubscribedContent-353694Enabled'
+        Type        = 'DWord'
+        Data        = 0
+        DocUrl      = 'https://learn.microsoft.com/windows-server/remote/remote-desktop-services/remote-desktop-services-vdi-optimize-configuration'
+        Confidence  = 'Community'
+        Reversible  = $true
+        Destructive = $false
+    },
+    @{
+        Id          = 'PRIV.CDM.SubscribedContent-353696Enabled'
+        Category    = 'PRIV'
+        Group       = 'reg-safe'
+        Description = 'Turn off: Suggested content in Settings (preference)'
+        MinBuild    = 0
+        Kind        = 'Registry'
+        Hive        = 'HKCU'
+        Key         = 'Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'
+        Value       = 'SubscribedContent-353696Enabled'
+        Type        = 'DWord'
+        Data        = 0
+        DocUrl      = 'https://learn.microsoft.com/windows-server/remote/remote-desktop-services/remote-desktop-services-vdi-optimize-configuration'
+        Confidence  = 'Community'
+        Reversible  = $true
+        Destructive = $false
+    },
+    @{
+        Id          = 'PRIV.CDM.SystemPaneSuggestionsEnabled'
+        Category    = 'PRIV'
+        Group       = 'reg-safe'
+        Description = 'Turn off: Suggestions in Start (preference)'
+        MinBuild    = 0
+        Kind        = 'Registry'
+        Hive        = 'HKCU'
+        Key         = 'Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'
+        Value       = 'SystemPaneSuggestionsEnabled'
+        Type        = 'DWord'
+        Data        = 0
+        DocUrl      = 'https://learn.microsoft.com/windows-server/remote/remote-desktop-services/remote-desktop-services-vdi-optimize-configuration'
+        Confidence  = 'Community'
+        Reversible  = $true
+        Destructive = $false
+    },
+    @{
+        Id          = 'PRIV.CDM.SilentInstalledAppsEnabled'
+        Category    = 'PRIV'
+        Group       = 'reg-safe'
+        Description = 'Turn off: automatic install of promoted apps (preference; no Microsoft source)'
+        MinBuild    = 0
+        Kind        = 'Registry'
+        Hive        = 'HKCU'
+        Key         = 'Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'
+        Value       = 'SilentInstalledAppsEnabled'
+        Type        = 'DWord'
+        Data        = 0
+        DocUrl      = ''
+        Confidence  = 'Community'
+        Reversible  = $true
+        Destructive = $false
+    },
+    @{
+        Id          = 'PRIV.CDM.SoftLandingEnabled'
+        Category    = 'PRIV'
+        Group       = 'reg-safe'
+        Description = 'Turn off: Windows tips notifications (preference; no Microsoft source)'
+        MinBuild    = 0
+        Kind        = 'Registry'
+        Hive        = 'HKCU'
+        Key         = 'Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'
+        Value       = 'SoftLandingEnabled'
+        Type        = 'DWord'
+        Data        = 0
+        DocUrl      = ''
+        Confidence  = 'Community'
+        Reversible  = $true
+        Destructive = $false
+    },
+    @{
+        Id          = 'PRIV.Explorer.Start_IrisRecommendations'
+        Category    = 'PRIV'
+        Group       = 'reg-safe'
+        Description = 'Start: no recommendations for tips, shortcuts and new apps (documented user setting)'
+        MinBuild    = 0
+        Kind        = 'Registry'
+        Hive        = 'HKCU'
+        Key         = 'Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
+        Value       = 'Start_IrisRecommendations'
+        Type        = 'DWord'
+        Data        = 0
+        DocUrl      = 'https://learn.microsoft.com/windows/apps/develop/settings/settings-windows-11'
+        Confidence  = 'Documented'
+        Reversible  = $true
+        Destructive = $false
+    },
+
+    # ---- [P23] Customer Experience Improvement Program tasks (v2.15.0) ----
+    # Microsoft's VDI optimisation guide describes the first two as CEIP data
+    # collection. Not shipped: Microsoft Compatibility Appraiser, which also
+    # feeds Windows Update's upgrade-compatibility checks.
+    @{
+        Id          = 'PRIV.Task.CEIP.Consolidator'
+        Category    = 'PRIV'
+        Group       = 'task'
+        Description = 'Disable the CEIP Consolidator task (sends usage data if CEIP consent was given)'
+        MinBuild    = 0
+        Kind        = 'ScheduledTask'
+        TaskPath    = '\Microsoft\Windows\Customer Experience Improvement Program\'
+        TaskName    = 'Consolidator'
+        DocUrl      = 'https://learn.microsoft.com/windows-server/remote/remote-desktop-services/remote-desktop-services-vdi-optimize-configuration'
+        Confidence  = 'BestEffort'
+        Reversible  = $true
+        Destructive = $false
+    },
+    @{
+        Id          = 'PRIV.Task.DiskDiagnosticDataCollector'
+        Category    = 'PRIV'
+        Group       = 'task'
+        Description = 'Disable the disk diagnostic data collector task (reports disk/system info to Microsoft under CEIP)'
+        MinBuild    = 0
+        Kind        = 'ScheduledTask'
+        TaskPath    = '\Microsoft\Windows\DiskDiagnostic\'
+        TaskName    = 'Microsoft-Windows-DiskDiagnosticDataCollector'
+        DocUrl      = 'https://learn.microsoft.com/windows-server/remote/remote-desktop-services/remote-desktop-services-vdi-optimize-configuration'
+        Confidence  = 'BestEffort'
+        Reversible  = $true
+        Destructive = $false
+    },
+    @{
+        Id          = 'PRIV.Task.CEIP.UsbCeip'
+        Category    = 'PRIV'
+        Group       = 'task'
+        Description = 'Disable the CEIP UsbCeip task (USB usage data; no Microsoft description)'
+        MinBuild    = 0
+        Kind        = 'ScheduledTask'
+        TaskPath    = '\Microsoft\Windows\Customer Experience Improvement Program\'
+        TaskName    = 'UsbCeip'
+        DocUrl      = ''
+        Confidence  = 'Community'
+        Reversible  = $true
+        Destructive = $false
     }
 )

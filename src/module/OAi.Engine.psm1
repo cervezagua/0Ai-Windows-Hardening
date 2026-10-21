@@ -40,12 +40,26 @@ function _New-Result {
     }
 }
 
+function _Short-Name {
+    # Keep backup file names well inside MAX_PATH (Windows PowerShell 5.1 has
+    # no long-path support): the folder already holds a SID, and -AllUsers
+    # names hold another. Long names become a prefix plus a stable hash.
+    param([string]$Name, [int]$Max = 100)
+    if ($Name.Length -le $Max) { return $Name }
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try { $h = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($Name)) } finally { $sha.Dispose() }
+    $hex = (($h[0..7] | ForEach-Object { $_.ToString('x2') }) -join '')
+    return ($Name.Substring(0, $Max - 17) + '_' + $hex)
+}
+
 function _Resolve-Hive {
     param([string]$Hive)
     switch ($Hive) {
         'HKLM' { return 'HKLM:' }
         'HKCU' { return 'HKCU:' }
         'HKCR' { return 'HKCR:' }
+        # Other users' hives (-AllUsers): HKEY_USERS\<mount>\...
+        'HKU'  { return 'Registry::HKEY_USERS' }
         default { return ($Hive + ':') }
     }
 }
@@ -60,6 +74,7 @@ function _Ensure-RegistryKey {
         'HKLM' { $base = [Microsoft.Win32.RegistryHive]::LocalMachine }
         'HKCU' { $base = [Microsoft.Win32.RegistryHive]::CurrentUser }
         'HKCR' { $base = [Microsoft.Win32.RegistryHive]::ClassesRoot }
+        'HKU'  { $base = [Microsoft.Win32.RegistryHive]::Users }
         default { throw ('unsupported hive: {0}' -f $Hive) }
     }
     $root = $null
@@ -148,6 +163,7 @@ function _Sanitize-Filename {
 # Get-OAiNotApplicableReason
 #   Why a policy cannot apply on this PC, or '' if it can. Apply skips with
 #   this reason and Verify reports it as n/a rather than "missing".
+#     - MinBuild / MaxBuild: this Windows build is outside the range.
 #     - Kind=Service, or RequiresService: the service is not installed
 #       (e.g. IsoEnvBroker only exists with experimental agentic features).
 #     - UcpdProtected: Windows' UserChoice Protection Driver (UCPD) blocks
@@ -170,6 +186,25 @@ function _Test-UcpdActive {
     return $active
 }
 
+$script:CurrentBuild = $null
+function _Get-CurrentBuild {
+    # 0 when unknown (e.g. tests off Windows): build gates then pass.
+    if ($null -ne $script:CurrentBuild) { return $script:CurrentBuild }
+    $b = 0
+    try {
+        $cv = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -ErrorAction Stop
+        if ($cv.CurrentBuild) { $b = [int]$cv.CurrentBuild }
+    } catch {}
+    $script:CurrentBuild = $b
+    return $b
+}
+
+function _Get-Task {
+    # $null when the scheduled task does not exist.
+    param($Policy)
+    try { return (Get-ScheduledTask -TaskPath $Policy.TaskPath -TaskName $Policy.TaskName -ErrorAction Stop) } catch { return $null }
+}
+
 function _Service-Installed {
     param([string]$Name)
     try { $null = Get-Service -Name $Name -ErrorAction Stop; return $true } catch { return $false }
@@ -177,8 +212,20 @@ function _Service-Installed {
 
 function Get-OAiNotApplicableReason {
     param([Parameter(Mandatory)] $Policy)
+    $build = _Get-CurrentBuild
+    if ($build -gt 0) {
+        if ($Policy.MinBuild -and [int]$Policy.MinBuild -gt 0 -and $build -lt [int]$Policy.MinBuild) {
+            return ('needs Windows build {0} or later; this PC is {1}' -f $Policy.MinBuild, $build)
+        }
+        if ($Policy.MaxBuild -and [int]$Policy.MaxBuild -gt 0 -and $build -gt [int]$Policy.MaxBuild) {
+            return ('applies up to Windows build {0} only; this PC is {1}' -f $Policy.MaxBuild, $build)
+        }
+    }
     if ($Policy.Kind -eq 'Service' -and $Policy.Name -and -not (_Service-Installed $Policy.Name)) {
         return ('service {0} is not installed on this PC' -f $Policy.Name)
+    }
+    if ($Policy.Kind -eq 'ScheduledTask' -and -not (_Get-Task $Policy)) {
+        return ('scheduled task {0}{1} does not exist on this PC' -f $Policy.TaskPath, $Policy.TaskName)
     }
     if ($Policy.RequiresService -and -not (_Service-Installed $Policy.RequiresService)) {
         return ('service {0} is not installed on this PC' -f $Policy.RequiresService)
@@ -207,26 +254,18 @@ function Test-Precondition {
     )
 
     try {
-        # MinBuild gate
-        if ($Policy.MinBuild -and $Policy.MinBuild -gt 0) {
-            try {
-                $cv = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -ErrorAction SilentlyContinue
-                if ($cv -and $cv.CurrentBuild) {
-                    $cb = [int]$cv.CurrentBuild
-                    if ($cb -lt [int]$Policy.MinBuild) {
-                        return $false
-                    }
-                }
-            } catch {
-                # If we can't read the build, assume gate passes (we're probably on Linux test env).
-            }
+        # Build gates (MinBuild / MaxBuild). Unknown build (test env) passes.
+        $cb = _Get-CurrentBuild
+        if ($cb -gt 0) {
+            if ($Policy.MinBuild -and [int]$Policy.MinBuild -gt 0 -and $cb -lt [int]$Policy.MinBuild) { return $false }
+            if ($Policy.MaxBuild -and [int]$Policy.MaxBuild -gt 0 -and $cb -gt [int]$Policy.MaxBuild) { return $false }
         }
 
         switch ($Policy.Kind) {
             'Registry' {
                 $path = Join-Path (_Resolve-Hive $Policy.Hive) $Policy.Key
                 try {
-                    $cur = Get-ItemProperty -Path $path -Name $Policy.Value -ErrorAction Stop
+                    $cur = Get-ItemProperty -LiteralPath $path -Name $Policy.Value -ErrorAction Stop
                     if ($null -ne $cur.$($Policy.Value) -and $cur.$($Policy.Value) -eq $Policy.Data) {
                         return $false # already applied - skip
                     }
@@ -245,6 +284,11 @@ function Test-Precondition {
                     return $false # service missing - skip silently
                 }
                 return $true
+            }
+            'ScheduledTask' {
+                $t = _Get-Task $Policy
+                if (-not $t) { return $false }
+                return ([string]$t.State -ne 'Disabled')
             }
             default { return $true }
         }
@@ -289,19 +333,25 @@ function Backup-PolicyState {
                 #    reverts exactly what we touched, and can represent
                 #    "this value did not exist before" (revert = delete it),
                 #    which reg import cannot express at all.
-                $fname = 'reg_{0}.json' -f (_Sanitize-Filename ("{0}_{1}_{2}" -f $Policy.Hive, $Policy.Key, $Policy.Value))
+                # A per-user copy (-AllUsers) records the user it is for
+                # (HKCU@<label>) and the plain key, not where the hive was
+                # mounted, so Revert can match it whatever the mount is then.
+                $sHive = [string]$Policy.Hive
+                $sKey  = [string]$Policy.Key
+                if ($Policy.SnapshotHive) { $sHive = [string]$Policy.SnapshotHive; $sKey = [string]$Policy.SnapshotKey }
+                $fname = 'reg_{0}.json' -f (_Short-Name (_Sanitize-Filename ("{0}_{1}_{2}" -f $sHive, $sKey, $Policy.Value)))
                 $outFile = Join-Path $BackupDir $fname
                 $path = Join-Path (_Resolve-Hive $Policy.Hive) $Policy.Key
                 $snap = [ordered]@{
-                    Hive    = $Policy.Hive
-                    Key     = $Policy.Key
+                    Hive    = $sHive
+                    Key     = $sKey
                     Value   = $Policy.Value
                     Existed = $false
                     Type    = $null
                     Data    = $null
                 }
                 try {
-                    $item = Get-Item -Path $path -ErrorAction Stop
+                    $item = Get-Item -LiteralPath $path -ErrorAction Stop
                     # GetValueKind throws if the value is absent - that is the
                     # signal for "did not exist", handled by the catch below.
                     $kind = $item.GetValueKind($Policy.Value)
@@ -310,6 +360,11 @@ function Backup-PolicyState {
                     $snap.Data    = $item.GetValue($Policy.Value, $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
                 } catch {
                     # key or value absent -> Existed stays $false
+                } finally {
+                    # Release the key: an open handle keeps another user's
+                    # hive from unloading (-AllUsers).
+                    if ($item -is [System.IDisposable]) { $item.Dispose() }
+                    $item = $null
                 }
                 ($snap | ConvertTo-Json -Depth 4) | Out-File -Encoding UTF8 -FilePath $outFile
                 return $outFile
@@ -331,6 +386,20 @@ function Backup-PolicyState {
                 } catch {
                     '{"error":"service not found"}' | Out-File -Encoding UTF8 -FilePath $outFile
                 }
+                return $outFile
+            }
+            'ScheduledTask' {
+                $fname = 'task_{0}.json' -f (_Sanitize-Filename ($Policy.TaskPath + $Policy.TaskName))
+                $outFile = Join-Path $BackupDir $fname
+                $t = _Get-Task $Policy
+                $snap = [pscustomobject]@{
+                    TaskPath = $Policy.TaskPath
+                    TaskName = $Policy.TaskName
+                    Existed  = [bool]$t
+                    State    = $null
+                }
+                if ($t) { $snap.State = [string]$t.State }
+                $snap | ConvertTo-Json -Depth 4 | Out-File -Encoding UTF8 -FilePath $outFile
                 return $outFile
             }
             'AppxRemove' {
@@ -424,6 +493,10 @@ function Invoke-PolicyAction {
         switch ($Policy.Kind) {
             'Registry'    { $msg = _Apply-Registry    -Policy $Policy }
             'Service'     { $msg = _Apply-Service     -Policy $Policy }
+            'ScheduledTask' {
+                Disable-ScheduledTask -TaskPath $Policy.TaskPath -TaskName $Policy.TaskName -ErrorAction Stop | Out-Null
+                $msg = ('disabled scheduled task {0}{1}' -f $Policy.TaskPath, $Policy.TaskName)
+            }
             'AppxRemove'  { $msg = _Apply-AppxRemove  -Policy $Policy }
             'DefenderPref' { $msg = _Apply-DefenderPref -Policy $Policy }
             'DefenderAsr'  { $msg = _Apply-DefenderAsr  -Policy $Policy }
@@ -657,7 +730,10 @@ function Undo-PolicyAction {
                     # always comes from the manifest; the snapshot only
                     # supplies Existed/Type/Data, and must agree with it.
                     $snap = Get-Content -Raw -LiteralPath $bf | ConvertFrom-Json
-                    if (-not ((_Same-RegName $snap.Hive $Policy.Hive) -and (_Same-RegName $snap.Key $Policy.Key) -and (_Same-RegName $snap.Value $Policy.Value))) {
+                    $wantHive = [string]$Policy.Hive
+                    $wantKey  = [string]$Policy.Key
+                    if ($Policy.SnapshotHive) { $wantHive = [string]$Policy.SnapshotHive; $wantKey = [string]$Policy.SnapshotKey }
+                    if (-not ((_Same-RegName $snap.Hive $wantHive) -and (_Same-RegName $snap.Key $wantKey) -and (_Same-RegName $snap.Value $Policy.Value))) {
                         $sw.Stop()
                         return (_New-Result -Id $Policy.Id -Status 'warn' -DurationMs $sw.ElapsedMilliseconds -Message ('snapshot {0} does not match {1}\{2}!{3} - not restored' -f $bf, $Policy.Hive, $Policy.Key, $Policy.Value))
                     }
@@ -753,6 +829,26 @@ function Undo-PolicyAction {
                 }
                 $sw.Stop()
                 return (_New-Result -Id $Policy.Id -Status 'warn' -DurationMs $sw.ElapsedMilliseconds -Message 'no service snapshot')
+            }
+            'ScheduledTask' {
+                $bf = Resolve-OAiBackupFile -BackupDir $BackupDir -Recorded $BackupFile
+                $sw.Stop()
+                if (-not $bf) {
+                    return (_New-Result -Id $Policy.Id -Status 'warn' -DurationMs $sw.ElapsedMilliseconds -Message 'no task snapshot; left as it is')
+                }
+                try {
+                    $snap = Get-Content -LiteralPath $bf -Raw | ConvertFrom-Json
+                    if (-not ((_Same-RegName $snap.TaskPath $Policy.TaskPath) -and (_Same-RegName $snap.TaskName $Policy.TaskName))) {
+                        return (_New-Result -Id $Policy.Id -Status 'warn' -DurationMs $sw.ElapsedMilliseconds -Message ('task snapshot does not match {0}{1} - not restored' -f $Policy.TaskPath, $Policy.TaskName))
+                    }
+                    if ($snap.Existed -eq $true -and [string]$snap.State -ne 'Disabled') {
+                        Enable-ScheduledTask -TaskPath $Policy.TaskPath -TaskName $Policy.TaskName -ErrorAction Stop | Out-Null
+                        return (_New-Result -Id $Policy.Id -Status 'ok' -DurationMs $sw.ElapsedMilliseconds -Message ('re-enabled scheduled task {0}{1}' -f $Policy.TaskPath, $Policy.TaskName))
+                    }
+                    return (_New-Result -Id $Policy.Id -Status 'ok' -DurationMs $sw.ElapsedMilliseconds -Message 'task was already disabled before apply; left disabled')
+                } catch {
+                    return (_New-Result -Id $Policy.Id -Status 'warn' -DurationMs $sw.ElapsedMilliseconds -Message ('task revert failed: ' + $_.Exception.Message))
+                }
             }
             'AppxRemove' {
                 # v2.3 matches v2.2: we do NOT reinstall removed Appx packages.
