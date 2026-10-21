@@ -25,6 +25,14 @@ param(
 # StrictMode disabled for hashtable-heavy manifest handling
 $ErrorActionPreference = 'Stop'
 
+# ---- Full language mode required ----
+# Under Constrained Language Mode (WDAC / AppLocker policies) the .NET calls
+# the kit relies on fail midway; stop cleanly instead.
+if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') {
+    Write-Host ('[!] PowerShell is in {0} mode (set by an application-control policy). 0AI needs FullLanguage mode; nothing was changed.' -f $ExecutionContext.SessionState.LanguageMode) -ForegroundColor Red
+    exit 1
+}
+
 # ---- Culture invariance (must run before any other work) ----
 # PowerShell's -match / -replace / -like fold case using the CURRENT culture.
 # On Turkish and Azeri locales uppercase 'I' (U+0049) folds to dotless 'i'
@@ -72,6 +80,7 @@ $manifestDir = Join-Path $thisDir 'manifest'
 Import-Module (Join-Path $moduleDir 'OAi.Version.psm1') -Force
 Import-Module (Join-Path $moduleDir 'OAi.Manifest.psm1') -Force
 Import-Module (Join-Path $moduleDir 'OAi.BackupAcl.psm1') -Force
+Import-Module (Join-Path $moduleDir 'OAi.System.psm1') -Force
 
 # ---- Backup folder ----
 # Revert trusts these files with admin rights, so they must be beyond the
@@ -199,6 +208,13 @@ if ($picks.Count -eq 0) {
     }
 }
 
+# ---- Domain-joined? ----
+$dn = Get-OAiDomainNote
+if ($dn) {
+    Write-Host ('[!] ' + $dn) -ForegroundColor Yellow
+    ('[!] ' + $dn) | Out-File -Encoding UTF8 -FilePath $LogFile -Append
+}
+
 # ---- Elevated as a different account? ----
 # Printed after the launcher, which clears the screen.
 try {
@@ -253,12 +269,11 @@ if ($WhatIf) {
 # Created only once the run is certain to change something: after the
 # -Select check and the -WhatIf exit, so a dry run or a rejected Id list
 # does not leave a restore point behind.
-try {
-    Checkpoint-Computer -Description ('0AI_Pre_' + (Get-OAiVersion)) -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop | Out-Null
-    '[+] Restore point created.' | Out-File -Encoding UTF8 -FilePath $LogFile -Append
-} catch {
-    ('[!] Restore point unavailable: ' + $_.Exception.Message) | Out-File -Encoding UTF8 -FilePath $LogFile -Append
-}
+$rp = Invoke-OAiRestorePoint -Description ('0AI_Pre_' + (Get-OAiVersion))
+$rpTag = '[+] '
+if ($rp.Status -ne 'created') { $rpTag = '[!] ' }
+($rpTag + $rp.Message) | Out-File -Encoding UTF8 -FilePath $LogFile -Append
+if ($rp.Status -ne 'created') { Write-Host ($rpTag + $rp.Message) -ForegroundColor Yellow }
 
 # ---- Execute ----
 $queue = New-Object System.Collections.Concurrent.ConcurrentQueue[object]

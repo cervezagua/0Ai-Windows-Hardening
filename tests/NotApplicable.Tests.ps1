@@ -53,4 +53,21 @@ Describe '0AI not-applicable reasons' {
             Get-OAiNotApplicableReason -Policy $p | Should -Be ''
         }
     }
+
+    Context 'build gates' {
+        It 'below MinBuild' {
+            Mock -ModuleName OAi.Engine _Get-CurrentBuild { 26100 }
+            Get-OAiNotApplicableReason -Policy @{ Id = 'B'; Kind = 'Registry'; MinBuild = 26200 } | Should -Match 'needs Windows build 26200 or later; this PC is 26100'
+        }
+        It 'above MaxBuild' {
+            Mock -ModuleName OAi.Engine _Get-CurrentBuild { 26300 }
+            Get-OAiNotApplicableReason -Policy @{ Id = 'B'; Kind = 'Registry'; MaxBuild = 26200 } | Should -Match 'up to Windows build 26200'
+        }
+        It 'inside the range, or build unknown' {
+            Mock -ModuleName OAi.Engine _Get-CurrentBuild { 26200 }
+            Get-OAiNotApplicableReason -Policy @{ Id = 'B'; Kind = 'Registry'; MinBuild = 26100; MaxBuild = 26300 } | Should -Be ''
+            Mock -ModuleName OAi.Engine _Get-CurrentBuild { 0 }
+            Get-OAiNotApplicableReason -Policy @{ Id = 'B'; Kind = 'Registry'; MinBuild = 99999 } | Should -Be ''
+        }
+    }
 }

@@ -177,6 +177,15 @@ Describe '0AI manifest schema' {
                 })
             $msgs.Count | Should -Be 0 -Because "colliding registry targets: $($msgs -join '; ')"
         }
+        It 'MinBuild / MaxBuild are non-negative integers, MaxBuild >= MinBuild' {
+            $bad = @(foreach ($p in $script:Policies) {
+                    foreach ($f in 'MinBuild', 'MaxBuild') {
+                        if ($p.ContainsKey($f) -and -not ($p[$f] -is [int] -and $p[$f] -ge 0)) { '{0}: {1}' -f $p.Id, $f }
+                    }
+                    if ($p.MaxBuild -and $p.MinBuild -and $p.MaxBuild -lt $p.MinBuild) { '{0}: MaxBuild < MinBuild' -f $p.Id }
+                })
+            $bad.Count | Should -Be 0 -Because "offenders: $($bad -join ', ')"
+        }
         It 'RequiresService, UcpdProtected and GroupPolicy are well-formed where present' {
             $bad = @(foreach ($p in $script:Registry) {
                     if ($p.ContainsKey('RequiresService') -and -not ($p.RequiresService -is [string] -and $p.RequiresService.Length -gt 0)) { '{0}: RequiresService' -f $p.Id }

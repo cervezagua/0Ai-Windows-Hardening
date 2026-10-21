@@ -148,6 +148,7 @@ function _Sanitize-Filename {
 # Get-OAiNotApplicableReason
 #   Why a policy cannot apply on this PC, or '' if it can. Apply skips with
 #   this reason and Verify reports it as n/a rather than "missing".
+#     - MinBuild / MaxBuild: this Windows build is outside the range.
 #     - Kind=Service, or RequiresService: the service is not installed
 #       (e.g. IsoEnvBroker only exists with experimental agentic features).
 #     - UcpdProtected: Windows' UserChoice Protection Driver (UCPD) blocks
@@ -170,6 +171,19 @@ function _Test-UcpdActive {
     return $active
 }
 
+$script:CurrentBuild = $null
+function _Get-CurrentBuild {
+    # 0 when unknown (e.g. tests off Windows): build gates then pass.
+    if ($null -ne $script:CurrentBuild) { return $script:CurrentBuild }
+    $b = 0
+    try {
+        $cv = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -ErrorAction Stop
+        if ($cv.CurrentBuild) { $b = [int]$cv.CurrentBuild }
+    } catch {}
+    $script:CurrentBuild = $b
+    return $b
+}
+
 function _Service-Installed {
     param([string]$Name)
     try { $null = Get-Service -Name $Name -ErrorAction Stop; return $true } catch { return $false }
@@ -177,6 +191,15 @@ function _Service-Installed {
 
 function Get-OAiNotApplicableReason {
     param([Parameter(Mandatory)] $Policy)
+    $build = _Get-CurrentBuild
+    if ($build -gt 0) {
+        if ($Policy.MinBuild -and [int]$Policy.MinBuild -gt 0 -and $build -lt [int]$Policy.MinBuild) {
+            return ('needs Windows build {0} or later; this PC is {1}' -f $Policy.MinBuild, $build)
+        }
+        if ($Policy.MaxBuild -and [int]$Policy.MaxBuild -gt 0 -and $build -gt [int]$Policy.MaxBuild) {
+            return ('applies up to Windows build {0} only; this PC is {1}' -f $Policy.MaxBuild, $build)
+        }
+    }
     if ($Policy.Kind -eq 'Service' -and $Policy.Name -and -not (_Service-Installed $Policy.Name)) {
         return ('service {0} is not installed on this PC' -f $Policy.Name)
     }
@@ -207,19 +230,11 @@ function Test-Precondition {
     )
 
     try {
-        # MinBuild gate
-        if ($Policy.MinBuild -and $Policy.MinBuild -gt 0) {
-            try {
-                $cv = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -ErrorAction SilentlyContinue
-                if ($cv -and $cv.CurrentBuild) {
-                    $cb = [int]$cv.CurrentBuild
-                    if ($cb -lt [int]$Policy.MinBuild) {
-                        return $false
-                    }
-                }
-            } catch {
-                # If we can't read the build, assume gate passes (we're probably on Linux test env).
-            }
+        # Build gates (MinBuild / MaxBuild). Unknown build (test env) passes.
+        $cb = _Get-CurrentBuild
+        if ($cb -gt 0) {
+            if ($Policy.MinBuild -and [int]$Policy.MinBuild -gt 0 -and $cb -lt [int]$Policy.MinBuild) { return $false }
+            if ($Policy.MaxBuild -and [int]$Policy.MaxBuild -gt 0 -and $cb -gt [int]$Policy.MaxBuild) { return $false }
         }
 
         switch ($Policy.Kind) {

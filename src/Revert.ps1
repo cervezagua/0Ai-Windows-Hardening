@@ -19,6 +19,14 @@ param(
 # StrictMode disabled for hashtable-heavy manifest handling
 $ErrorActionPreference = 'Stop'
 
+# ---- Full language mode required ----
+# Under Constrained Language Mode (WDAC / AppLocker policies) the .NET calls
+# the kit relies on fail midway; stop cleanly instead.
+if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') {
+    Write-Host ('[!] PowerShell is in {0} mode (set by an application-control policy). 0AI needs FullLanguage mode; nothing was changed.' -f $ExecutionContext.SessionState.LanguageMode) -ForegroundColor Red
+    exit 1
+}
+
 # ---- Culture invariance (must run before any other work) ----
 # PowerShell's -match / -replace / -like fold case using the CURRENT culture.
 # On Turkish and Azeri locales uppercase 'I' (U+0049) folds to dotless 'i'
@@ -62,6 +70,7 @@ $moduleDir   = Join-Path $thisDir 'module'
 # Get-OAiVersion, so it must be loaded before any other work.
 Import-Module (Join-Path $moduleDir 'OAi.Version.psm1') -Force
 Import-Module (Join-Path $moduleDir 'OAi.BackupAcl.psm1') -Force
+Import-Module (Join-Path $moduleDir 'OAi.System.psm1') -Force
 $manifestDir = Join-Path $thisDir 'manifest'
 
 Import-Module (Join-Path $moduleDir 'OAi.BackupHistory.psm1') -Force
@@ -412,12 +421,11 @@ if ($needIds.Count -gt 0) {
     }
 }
 
-try {
-    Checkpoint-Computer -Description ('0AI_Revert_' + (Get-OAiVersion)) -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop | Out-Null
-    '[+] Restore point (pre-revert) created.' | Out-File -Encoding UTF8 -FilePath $logFile -Append
-} catch {
-    ('[!] Restore point unavailable: ' + $_.Exception.Message) | Out-File -Encoding UTF8 -FilePath $logFile -Append
-}
+$rp = Invoke-OAiRestorePoint -Description ('0AI_Revert_' + (Get-OAiVersion))
+$rpTag = '[+] '
+if ($rp.Status -ne 'created') { $rpTag = '[!] ' }
+($rpTag + '(pre-revert) ' + $rp.Message) | Out-File -Encoding UTF8 -FilePath $logFile -Append
+if ($rp.Status -ne 'created') { Write-Host ($rpTag + $rp.Message) -ForegroundColor Yellow }
 
 $counters = @{ ok = 0; warn = 0; error = 0; skipped = 0 }
 foreach ($r in $results) {

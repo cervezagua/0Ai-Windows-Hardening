@@ -11,6 +11,14 @@ param()
 # StrictMode disabled for hashtable-heavy manifest handling
 $ErrorActionPreference = 'Stop'
 
+# ---- Full language mode required ----
+# Under Constrained Language Mode (WDAC / AppLocker policies) the .NET calls
+# the kit relies on fail midway; stop cleanly instead.
+if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') {
+    Write-Host ('[!] PowerShell is in {0} mode (set by an application-control policy). 0AI needs FullLanguage mode; nothing was changed.' -f $ExecutionContext.SessionState.LanguageMode) -ForegroundColor Red
+    exit 1
+}
+
 # ---- Culture invariance (must run before any other work) ----
 # PowerShell's -match / -replace / -like fold case using the CURRENT culture.
 # On Turkish and Azeri locales uppercase 'I' (U+0049) folds to dotless 'i'
@@ -38,6 +46,7 @@ $moduleDir   = Join-Path $thisDir 'module'
 
 Import-Module (Join-Path $moduleDir 'OAi.Manifest.psm1') -Force
 Import-Module (Join-Path $moduleDir 'OAi.Engine.psm1') -Force
+Import-Module (Join-Path $moduleDir 'OAi.System.psm1') -Force
 
 function _Resolve-Hive { param([string]$H) switch ($H) { 'HKLM' { 'HKLM:' } 'HKCU' { 'HKCU:' } default { $H + ':' } } }
 
@@ -51,6 +60,9 @@ foreach ($mf in $manifestFiles) {
         Write-Warning ('[!] Failed to load manifest {0}: {1}' -f $mf.Name, $_.Exception.Message)
     }
 }
+
+$dn = Get-OAiDomainNote
+if ($dn) { Write-Host ('[!] ' + $dn) -ForegroundColor Yellow }
 
 try {
     $interactiveUser = Get-OAiInteractiveUser
@@ -78,10 +90,6 @@ foreach ($p in $all) {
                 } catch {
                     $current = '(not set)'
                     $status  = 'missing'
-                }
-                if ($status -ne 'match') {
-                    $na = Get-OAiNotApplicableReason -Policy $p
-                    if ($na) { $current = 'n/a: ' + $na; $status = 'n/a' }
                 }
             }
             'Service' {
@@ -147,6 +155,11 @@ foreach ($p in $all) {
     } catch {
         $status = 'error'
         $current = $_.Exception.Message
+    }
+    if (@('missing', 'drift') -contains $status) {
+        $na = ''
+        try { $na = Get-OAiNotApplicableReason -Policy $p } catch {}
+        if ($na) { $current = 'n/a: ' + $na; $status = 'n/a' }
     }
 
     $rows.Add([pscustomobject]@{

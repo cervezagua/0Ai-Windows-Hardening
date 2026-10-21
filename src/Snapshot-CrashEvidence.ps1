@@ -28,6 +28,14 @@ param(
 
 $ErrorActionPreference = 'Continue'
 
+# ---- Full language mode required ----
+# Under Constrained Language Mode (WDAC / AppLocker policies) the .NET calls
+# the kit relies on fail midway; stop cleanly instead.
+if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') {
+    Write-Host ('[!] PowerShell is in {0} mode (set by an application-control policy). 0AI needs FullLanguage mode; nothing was changed.' -f $ExecutionContext.SessionState.LanguageMode) -ForegroundColor Red
+    exit 1
+}
+
 # ---- Culture invariance (must run before any other work) ----
 # Matches the other entry points: PowerShell's -match / -like fold case using
 # the current culture, which breaks pattern matching on Turkish/Azeri locales.
