@@ -83,26 +83,26 @@ try { $isAdmin = (New-Object System.Security.Principal.WindowsPrincipal([System.
 if ($AllUsers -and -not $isAdmin) {
     Write-Host '[!] -AllUsers needs an elevated PowerShell (Run as Administrator) to read other profiles; checking this account only.' -ForegroundColor Yellow
 }
-if ($AllUsers -and $isAdmin) {
-    $targets = @()
-    try { $targets = @(Get-OAiUserTargets) } catch {}
-    $base = @($all.ToArray())
-    foreach ($t in $targets) {
-        if (-not (Mount-OAiUserHive -Target $t)) {
-            Write-Host ('[!] Could not load the profile of {0}; skipped.' -f $t.Name) -ForegroundColor Yellow
-            continue
-        }
-        $mounted += $t
-        foreach ($p in $base) {
-            $c = New-OAiTargetPolicy -Policy $p -Target $t
-            if ($c) { $all.Add($c) }
-        }
-    }
-    Write-Host ('[i] -AllUsers: also checking {0} other profile(s): {1}' -f $mounted.Count, (($mounted | ForEach-Object { $_.Name }) -join ', '))
-}
-
 $rows = New-Object System.Collections.Generic.List[object]
 try {
+    if ($AllUsers -and $isAdmin) {
+        $targets = @()
+        try { $targets = @(Get-OAiUserTargets) } catch {}
+        $base = @($all.ToArray())
+        foreach ($t in $targets) {
+            if (-not (Mount-OAiUserHive -Target $t)) {
+                Write-Host ('[!] Could not load the profile of {0}; skipped.' -f $t.Name) -ForegroundColor Yellow
+                continue
+            }
+            $mounted += $t
+            foreach ($p in $base) {
+                $c = New-OAiTargetPolicy -Policy $p -Target $t
+                if ($c) { $all.Add($c) }
+            }
+        }
+        Write-Host ('[i] -AllUsers: also checking {0} other profile(s): {1}' -f $mounted.Count, (($mounted | ForEach-Object { $_.Name }) -join ', '))
+    }
+
     foreach ($p in $all) {
         $expected = ''
         $current  = ''

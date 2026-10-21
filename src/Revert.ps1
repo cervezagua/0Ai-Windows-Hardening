@@ -320,6 +320,8 @@ if ($atResults.Count -gt 0) {
     try { $known = @(Get-OAiUserTargets) } catch {}
     $byLabel = @{}
     foreach ($t in $known) { $byLabel[$t.Label] = $t }
+    # Copies another admin applied to this account's own profile.
+    try { $self = Get-OAiSelfTarget; $byLabel[$self.Label] = $self } catch {}
     foreach ($r in $atResults) {
         $sp = Split-OAiTargetId -Id ([string]$r.Id)
         if (-not $policyMap.ContainsKey($sp.BaseId)) { continue }
@@ -454,20 +456,20 @@ if ($rp.Status -ne 'created') { Write-Host ($rpTag + $rp.Message) -ForegroundCol
 
 # Load the other profiles' hives this backup touched; unloaded in finally.
 $mounted = @()
-foreach ($t in $revTargets.Values) {
-    if (Mount-OAiUserHive -Target $t) { $mounted += $t }
-    else {
-        $m = ('[!] Could not load the profile of {0}; its per-user settings are not reverted.' -f $t.Name)
-        Write-Host $m -ForegroundColor Yellow
-        $m | Out-File -Encoding UTF8 -FilePath $logFile -Append
-        foreach ($k in @($policyMap.Keys)) {
-            if ($policyMap[$k].TargetLabel -eq $t.Label) { $policyMap.Remove($k); $missingTargets[$k] = $t.Label }
-        }
-    }
-}
-
 $counters = @{ ok = 0; warn = 0; error = 0; skipped = 0 }
 try {
+    foreach ($t in $revTargets.Values) {
+        if (Mount-OAiUserHive -Target $t) { $mounted += $t }
+        else {
+            $m = ('[!] Could not load the profile of {0}; its per-user settings are not reverted.' -f $t.Name)
+            Write-Host $m -ForegroundColor Yellow
+            $m | Out-File -Encoding UTF8 -FilePath $logFile -Append
+            foreach ($k in @($policyMap.Keys)) {
+                if ($policyMap[$k].TargetLabel -eq $t.Label) { $policyMap.Remove($k); $missingTargets[$k] = $t.Label }
+            }
+        }
+    }
+
     foreach ($r in $results) {
         $rid = [string]$r.Id
         $bf = ''

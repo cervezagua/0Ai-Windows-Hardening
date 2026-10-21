@@ -96,6 +96,20 @@ function New-OAiTargetPolicy {
 # Windows side
 # ---------------------------------------------------------------------------
 
+function Get-OAiSelfTarget {
+    # The running account as a target: its hive is loaded (HKEY_USERS\<SID>).
+    # Revert needs it for "<Id>@<own SID>" copies another admin applied.
+    $me = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    return [pscustomobject]@{
+        Label     = $me.User.Value
+        Sid       = $me.User.Value
+        Name      = @($me.Name -split '\\')[-1]
+        HivePath  = ''
+        Mount     = $me.User.Value
+        NeedsLoad = $false
+    }
+}
+
 function Get-OAiUserTargets {
     $plKey = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList'
     $profiles = @(foreach ($k in @(Get-ChildItem -LiteralPath $plKey -ErrorAction SilentlyContinue)) {
@@ -118,11 +132,34 @@ function Get-OAiUserTargets {
     return Select-OAiUserTargets -Profiles $profiles -CurrentSid $me -DefaultPath $defaultPath -DefaultHasHive $defaultHasHive
 }
 
+function _Invoke-RegExe {
+    # reg.exe exit code. With $ErrorActionPreference = 'Stop', Windows
+    # PowerShell 5.1 turns a native command's first stderr line into a
+    # terminating error when stderr is redirected, so run it under
+    # 'Continue' and judge it by its exit code only.
+    param([string[]]$Arguments)
+    $old = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $null = & reg.exe @Arguments 2>&1
+        return [int]$LASTEXITCODE
+    } catch {
+        return 1
+    } finally {
+        $ErrorActionPreference = $old
+    }
+}
+
 function Mount-OAiUserHive {
     # Returns $true when the target's hive is reachable under
     # HKEY_USERS\<Mount>; loads it first if needed (sets .Loaded).
     param([Parameter(Mandatory)] $Target)
     $Target | Add-Member -NotePropertyName Loaded -NotePropertyValue $false -Force
+    try { return (_Mount-Hive $Target) } catch { return $false }
+}
+
+function _Mount-Hive {
+    param($Target)
     $hku = 'Registry::HKEY_USERS\' + $Target.Mount
     if (-not $Target.NeedsLoad) { return (Test-Path -LiteralPath $hku) }
     if (Test-Path -LiteralPath $hku) {
@@ -130,8 +167,7 @@ function Mount-OAiUserHive {
         $Target.Loaded = $true
         return $true
     }
-    $null = & reg.exe load ('HKU\' + $Target.Mount) $Target.HivePath 2>&1
-    if ($LASTEXITCODE -ne 0) { return $false }
+    if ((_Invoke-RegExe @('load', ('HKU\' + $Target.Mount), $Target.HivePath)) -ne 0) { return $false }
     $Target.Loaded = $true
     return $true
 }
@@ -142,15 +178,19 @@ function Dismount-OAiUserHive {
     # and report failure clearly ($false).
     param([Parameter(Mandatory)] $Target)
     if (-not $Target.Loaded) { return $true }
+    try { return (_Dismount-Hive $Target) } catch { return $false }
+}
+
+function _Dismount-Hive {
+    param($Target)
     for ($i = 0; $i -lt 4; $i++) {
         # Registry handles held by .NET / the provider keep the hive busy.
         [GC]::Collect()
         [GC]::WaitForPendingFinalizers()
-        $null = & reg.exe unload ('HKU\' + $Target.Mount) 2>&1
-        if ($LASTEXITCODE -eq 0) { $Target.Loaded = $false; return $true }
+        if ((_Invoke-RegExe @('unload', ('HKU\' + $Target.Mount))) -eq 0) { $Target.Loaded = $false; return $true }
         Start-Sleep -Milliseconds 750
     }
     return $false
 }
 
-Export-ModuleMember -Function Split-OAiTargetId, Select-OAiUserTargets, New-OAiTargetPolicy, Get-OAiUserTargets, Mount-OAiUserHive, Dismount-OAiUserHive
+Export-ModuleMember -Function Split-OAiTargetId, Select-OAiUserTargets, New-OAiTargetPolicy, Get-OAiUserTargets, Get-OAiSelfTarget, Mount-OAiUserHive, Dismount-OAiUserHive

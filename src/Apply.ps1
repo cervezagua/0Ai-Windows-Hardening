@@ -307,20 +307,22 @@ if ($rp.Status -ne 'created') { $rpTag = '[!] ' }
 if ($rp.Status -ne 'created') { Write-Host ($rpTag + $rp.Message) -ForegroundColor Yellow }
 
 # ---- Load other users' hives (-AllUsers) ----
+# Inside the try, so whatever is loaded is unloaded in finally, even if a
+# later load fails or the run is interrupted.
 $mounted = @()
-foreach ($t in $userTargets) {
-    if (Mount-OAiUserHive -Target $t) {
-        $mounted += $t
-    } else {
-        $m = ('[!] -AllUsers: could not load the profile of {0} ({1}); its per-user settings are skipped.' -f $t.Name, $t.HivePath)
-        Write-Host $m -ForegroundColor Yellow
-        $m | Out-File -Encoding UTF8 -FilePath $LogFile -Append
-        $plan.Policies = @($plan.Policies | Where-Object { $_.TargetLabel -ne $t.Label })
-        $plan.Count = @($plan.Policies).Count
-    }
-}
-
 try {
+    foreach ($t in $userTargets) {
+        if (Mount-OAiUserHive -Target $t) {
+            $mounted += $t
+        } else {
+            $m = ('[!] -AllUsers: could not load the profile of {0} ({1}); its per-user settings are skipped.' -f $t.Name, $t.HivePath)
+            Write-Host $m -ForegroundColor Yellow
+            $m | Out-File -Encoding UTF8 -FilePath $LogFile -Append
+            $plan.Policies = @($plan.Policies | Where-Object { $_.TargetLabel -ne $t.Label })
+            $plan.Count = @($plan.Policies).Count
+        }
+    }
+
     # ---- Execute ----
     $queue = New-Object System.Collections.Concurrent.ConcurrentQueue[object]
     $uiState = Start-ConsoleUI -PlanResult $plan -EventQueue $queue

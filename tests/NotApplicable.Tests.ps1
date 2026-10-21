@@ -82,4 +82,17 @@ Describe '0AI not-applicable reasons' {
             Get-OAiNotApplicableReason -Policy @{ Id = 'T'; Kind = 'ScheduledTask'; TaskPath = '\A\'; TaskName = 'B' } | Should -Be ''
         }
     }
+
+    Context 'backup file names stay short (MAX_PATH on Windows PowerShell 5.1)' {
+        It 'leaves short names alone and shortens long ones to a stable 100-char name' {
+            InModuleScope OAi.Engine {
+                _Short-Name 'reg_HKLM_x' | Should -Be 'reg_HKLM_x'
+                $long = 'HKCU@S-1-5-21-1234567890-1234567890-1234567890-12345_Software_Microsoft_Windows_CurrentVersion_Shell_Extensions_Blocked__CB3B0003-8088-4EDE-8769-8B354AB2FF8C_'
+                $a = _Short-Name $long
+                $a.Length | Should -Be 100
+                $a | Should -Be (_Short-Name $long)
+                $a | Should -Not -Be (_Short-Name ($long + 'x'))
+            }
+        }
+    }
 }

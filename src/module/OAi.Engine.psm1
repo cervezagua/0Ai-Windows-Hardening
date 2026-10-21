@@ -40,6 +40,18 @@ function _New-Result {
     }
 }
 
+function _Short-Name {
+    # Keep backup file names well inside MAX_PATH (Windows PowerShell 5.1 has
+    # no long-path support): the folder already holds a SID, and -AllUsers
+    # names hold another. Long names become a prefix plus a stable hash.
+    param([string]$Name, [int]$Max = 100)
+    if ($Name.Length -le $Max) { return $Name }
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try { $h = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($Name)) } finally { $sha.Dispose() }
+    $hex = (($h[0..7] | ForEach-Object { $_.ToString('x2') }) -join '')
+    return ($Name.Substring(0, $Max - 17) + '_' + $hex)
+}
+
 function _Resolve-Hive {
     param([string]$Hive)
     switch ($Hive) {
@@ -327,7 +339,7 @@ function Backup-PolicyState {
                 $sHive = [string]$Policy.Hive
                 $sKey  = [string]$Policy.Key
                 if ($Policy.SnapshotHive) { $sHive = [string]$Policy.SnapshotHive; $sKey = [string]$Policy.SnapshotKey }
-                $fname = 'reg_{0}.json' -f (_Sanitize-Filename ("{0}_{1}_{2}" -f $sHive, $sKey, $Policy.Value))
+                $fname = 'reg_{0}.json' -f (_Short-Name (_Sanitize-Filename ("{0}_{1}_{2}" -f $sHive, $sKey, $Policy.Value)))
                 $outFile = Join-Path $BackupDir $fname
                 $path = Join-Path (_Resolve-Hive $Policy.Hive) $Policy.Key
                 $snap = [ordered]@{
@@ -348,6 +360,11 @@ function Backup-PolicyState {
                     $snap.Data    = $item.GetValue($Policy.Value, $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
                 } catch {
                     # key or value absent -> Existed stays $false
+                } finally {
+                    # Release the key: an open handle keeps another user's
+                    # hive from unloading (-AllUsers).
+                    if ($item -is [System.IDisposable]) { $item.Dispose() }
+                    $item = $null
                 }
                 ($snap | ConvertTo-Json -Depth 4) | Out-File -Encoding UTF8 -FilePath $outFile
                 return $outFile
