@@ -1,7 +1,7 @@
 # 0AI - Windows Hardening Kit
 
 ### Windows 11 Privacy, AI Disablement & Security Hardening
-**Version:** `v2.15.0`
+**Version:** `v2.15.1`
 
 **Supported baselines:** Windows 11 25H2 (OS Build **26200.9711+**) and 26H2
 (OS Build **26300.9711+**), through the **October 13 2026 Patch Tuesday
@@ -10,6 +10,9 @@ end of support on October 13 2026** — KB5127648 is their last update; only
 Enterprise and Education 24H2 keep receiving fixes (until October 12 2027).
 Earlier builds still work but the 25H2-specific switches (e.g. File Explorer
 AI Actions, IsoEnvBroker, RemoveMicrosoftCopilotApp) are no-ops.
+Also checked against the **October 26 2026 out-of-band KB5134133** (builds
+26100/26200/26300.**9725**; certificate trust list only, Microsoft Update
+Catalog only): no kit changes needed.
 
 **Edition note.** Microsoft's WindowsAI policy reference marks several
 policies the kit writes as **not applying to Pro** — `DisableSettingsAgent`,
@@ -121,6 +124,40 @@ the manifest. No changes.
 reinstalled by `Revert.ps1`. Opt in only if you're comfortable with that.
 
 ---
+
+## What's new in v2.15.1
+
+**Checked the updates released after KB5127648. No policy changes are
+needed; two known Windows issues are now documented.**
+
+- **KB5134133 (October 26 2026, out-of-band, builds .9725).** This is a
+  cumulative update offered only through the Microsoft Update Catalog. It
+  ships an updated trusted root certificate payload for PCs that cannot
+  reach Microsoft's certificate-update service or have automatic
+  certificate trust list updates turned off, following the compromised
+  eMudhra CA keys. The kit sets no certificate-update policy, so it does
+  not interact.
+  - Microsoft notes that hotpatch-enrolled devices that install it get no
+    hotpatches until the January 2027 baseline.
+  - It updates the Copilot+ AI components (Image Search, Content
+    Extraction, Semantic Analysis, Settings Model) to 1.2608.951.0. These
+    stay covered by the existing WindowsAI policies, e.g.
+    `DisableSettingsAgent`.
+- **There was no October non-security preview.** The next one, KB5127936
+  (builds .9807), is still in the Release Preview Channel and is expected
+  as the November 2026 update. It will get its own review.
+- **Documented, not applied by the kit:**
+  - Remote Desktop to PCs with Administrator protection fails for
+    non-admin users (0xC000000D), see *Administrator Protection*.
+  - Smart App Control cannot be turned back on, see *Known Windows issues*.
+- **Still not shipped:** the WindowsAI `ConfigureAgentConnectors` policy
+  (agent connectors). It is still marked Windows Insider Preview, with no
+  documented registry value.
+- **Watching:**
+  - KB5127936's final notes (AI and Start changes, HVCI expansion, and the
+    Smart App Control and RDP fixes);
+  - `ConfigureAgentConnectors` leaving Insider;
+  - the April 2027 retirement of DPAPI prompt-based protection.
 
 ## What's new in v2.15.0
 
@@ -1146,6 +1183,37 @@ including the one this kit needs to run. Reports on 25H2 also describe the
 toggle not appearing at all, or registry-enabled prompts never asking for a
 PIN. Enable it only on a machine with Hello working, and verify you can still
 elevate before relying on it.
+
+**Known issue (since the September 2026 preview KB5124010, still present in
+KB5134133).** Non-admin users may be unable to make Remote Desktop
+connections *to* a PC that has Administrator protection on, with error
+0xC000000D ("The token that was passed to the function is invalid").
+Microsoft's workaround is to turn Administrator protection off again (reset
+*User Account Control: Configure type of Admin Approval Mode*) until a fix
+ships. This kit disables incoming Remote Desktop by default
+(`HARD.RDP.fDenyTSConnections`), so it only affects PCs where you turned RDP
+back on. Microsoft's Windows security baselines enable Administrator
+protection by default, so check this if you also apply those.
+
+### Known Windows issues
+
+**Smart App Control cannot be turned back on** (grayed out in Windows
+Security after it was turned off; listed as a known issue in KB5134133).
+PCs where it is still on are not affected. The kit does not touch Smart App
+Control and does not apply Microsoft's workaround, because it is a
+temporary feature override rather than a policy. If you need it, Microsoft's
+fix is to run this in an elevated Command Prompt and restart:
+
+```cmd
+reg add "HKLM\SYSTEM\CurrentControlSet\Policies\Microsoft\FeatureManagement\Overrides" /v 2883193997 /t REG_DWORD /d 1 /f
+reg add "HKLM\SYSTEM\CurrentControlSet\Policies\Microsoft\FeatureManagement\Overrides" /v 2850574478 /t REG_DWORD /d 1 /f
+```
+
+Managed fleets can instead use the two Known Issue Rollback Group Policies
+Microsoft links from the
+[KB5134133 page](https://support.microsoft.com/en-us/servicing/os/windows-11/2026/10/kb5134133-windows-11-24h2-25h2-26h2-update)
+(both must be installed and set to **Enabled**). Remove the values once
+Microsoft ships the fix.
 
 ## Manual steps the kit cannot perform
 
