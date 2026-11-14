@@ -348,6 +348,26 @@
         Reversible  = $true
         Destructive = $false
     },
+    # v2.15.2: the documented web-results switch (Search CSP DoNotUseWebResults).
+    # Windows Search is adding web-backed "quick answers" (Release Preview, Nov
+    # 2026). Microsoft lists this policy for Enterprise/Education only.
+    @{
+        Id          = 'AI.Search.ConnectedSearchUseWeb'
+        Category    = 'AI'
+        Group       = 'reg-safe'
+        Description = 'Do not search the web or show web results in Windows Search (Enterprise/Education only per the Search CSP)'
+        MinBuild    = 0
+        Kind        = 'Registry'
+        Hive        = 'HKLM'
+        Key         = 'SOFTWARE\Policies\Microsoft\Windows\Windows Search'
+        Value       = 'ConnectedSearchUseWeb'
+        Type        = 'DWord'
+        Data        = 0
+        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-search#donotusewebresults'
+        Confidence  = 'Documented'
+        Reversible  = $true
+        Destructive = $false
+    },
 
     # ---- [A5] Suggested Actions + Input Personalization ----
     @{

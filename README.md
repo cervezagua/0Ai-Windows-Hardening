@@ -1,18 +1,18 @@
 # 0AI - Windows Hardening Kit
 
 ### Windows 11 Privacy, AI Disablement & Security Hardening
-**Version:** `v2.15.1`
+**Version:** `v2.15.2`
 
-**Supported baselines:** Windows 11 25H2 (OS Build **26200.9711+**) and 26H2
-(OS Build **26300.9711+**), through the **October 13 2026 Patch Tuesday
-KB5127648**. 24H2 (26100.9711+) still works, but **24H2 Home and Pro reached
-end of support on October 13 2026** — KB5127648 is their last update; only
-Enterprise and Education 24H2 keep receiving fixes (until October 12 2027).
+**Supported baselines:** Windows 11 25H2 (OS Build **26200.9974+**) and 26H2
+(OS Build **26300.9974+**), through the **November 10 2026 Patch Tuesday
+KB5132061**. 24H2 still works, but **24H2 Home and Pro reached end of
+support on October 13 2026** (KB5127648 was their last update); 24H2
+Enterprise and Education get KB5132061 as 26100.9974 and keep receiving
+fixes until October 12 2027.
 Earlier builds still work but the 25H2-specific switches (e.g. File Explorer
 AI Actions, IsoEnvBroker, RemoveMicrosoftCopilotApp) are no-ops.
-Also checked against the **October 26 2026 out-of-band KB5134133** (builds
-26100/26200/26300.**9725**; certificate trust list only, Microsoft Update
-Catalog only): no kit changes needed.
+Also reviewed: the October 26 out-of-band **KB5134133** (.9725) and the
+October 28 preview **KB5127936** (.9818). There is no December 2026 preview.
 
 **Edition note.** Microsoft's WindowsAI policy reference marks several
 policies the kit writes as **not applying to Pro** — `DisableSettingsAgent`,
@@ -124,6 +124,56 @@ the manifest. No changes.
 reinstalled by `Revert.ps1`. Opt in only if you're comfortable with that.
 
 ---
+
+## What's new in v2.15.2
+
+**Checked the November 2026 updates.** New baseline: **KB5132061** (November
+10 Patch Tuesday; 26200/26300.9974, and 26100.9974 for 24H2
+Enterprise/Education). Also reviewed the October 28 preview **KB5127936**
+(.9818). No existing kit policy, service, task or app removal is affected.
+
+- **New policy `AI.Search.ConnectedSearchUseWeb = 0`** (*Don't search the web
+  or display web results in Search*, Search CSP `DoNotUseWebResults`). A
+  Release Preview build adds web-backed "quick answers" to Windows Search,
+  and this is the documented switch for web results. Microsoft lists it for
+  **Enterprise and Education only**; on Home and Pro it is harmless, and the
+  existing `BingSearchEnabled` / search-suggestion settings still apply.
+- **Resolved:**
+  - Remote Desktop to PCs with Administrator protection (0xC000000D), fixed
+    in .9818 / 24H2 .9974.
+  - Smart App Control being stuck off, fixed in .9818.
+  - .9818's own RDP certificate-mismatch regression, fixed in .9974.
+
+  The README's Administrator Protection and *Known Windows issues* sections
+  are updated to match.
+- **Memory integrity (HVCI)** may now be turned on automatically during
+  updates, respecting existing choices; see *Known Windows issues*. The kit
+  neither sets it nor conflicts with it.
+- **NTLM signing:**
+  - Clients sign by default since KB5132061.
+  - Servers will require signing from May 2027.
+  - The README documents how to require it early (`ServerRequireNtlmSign`).
+    The kit does not apply it, because it can lock out old network devices.
+- **Other changes in these updates:**
+  - **PowerShell script signing** now rejects invalid UTF-8. The kit's
+    scripts are unsigned and valid UTF-8, so no effect.
+  - **Edge "accelerated app launch":** Windows hands links to an
+    already-running Edge. There is no policy for it.
+  - **WinRE reuses saved Wi-Fi profiles** for recovery by default; admins
+    can turn this off.
+  - **AI components on Copilot+ PCs** were updated to 1.2610.x. They are
+    still governed by the existing WindowsAI policies.
+- **Still not shipped:** the WindowsAI agent-connector policies
+  (`ConfigureAgentConnectors` and others) are still marked Windows Insider
+  Preview, with no documented registry value.
+- **Watching:**
+  - the next preview (Release Preview .10066: Search quick answers, "account
+    benefits" in Settings, Widgets notifications);
+  - whether the "Ask Copilot" block still hides that entry in the new File
+    Explorer context menu from .9818;
+  - the agent-connector policies;
+  - NTLM phase 2 (May 2027);
+  - DPAPI prompt retirement (April 2027).
 
 ## What's new in v2.15.1
 
@@ -1184,22 +1234,21 @@ toggle not appearing at all, or registry-enabled prompts never asking for a
 PIN. Enable it only on a machine with Hello working, and verify you can still
 elevate before relying on it.
 
-**Known issue (since the September 2026 preview KB5124010, still present in
-KB5134133).** Non-admin users may be unable to make Remote Desktop
-connections *to* a PC that has Administrator protection on, with error
-0xC000000D ("The token that was passed to the function is invalid").
-Microsoft's workaround is to turn Administrator protection off again (reset
-*User Account Control: Configure type of Admin Approval Mode*) until a fix
-ships. This kit disables incoming Remote Desktop by default
-(`HARD.RDP.fDenyTSConnections`), so it only affects PCs where you turned RDP
-back on. Microsoft's Windows security baselines enable Administrator
-protection by default, so check this if you also apply those.
+**Resolved known issue.** From the September 2026 preview (KB5124010),
+non-admin users could not make Remote Desktop connections *to* a PC with
+Administrator protection on (error 0xC000000D, "The token that was passed to
+the function is invalid"). **Fixed in KB5127936 (26200/26300.9818)**, and for
+24H2 Enterprise/Education in KB5132061 (26100.9974). If you turned
+Administrator protection off as a workaround, you can turn it back on once
+updated. The .9818 preview briefly caused a different RDP problem
+(client-side certificate mismatch), fixed in KB5132061 (.9974).
 
 ### Known Windows issues
 
-**Smart App Control cannot be turned back on** (grayed out in Windows
-Security after it was turned off; listed as a known issue in KB5134133).
-PCs where it is still on are not affected. The kit does not touch Smart App
+**Smart App Control could not be turned back on** (grayed out in Windows
+Security after it was turned off). **Fixed in KB5127936 (.9818) and later**,
+so updating is the real fix; the workaround below is only for PCs that
+cannot update yet. PCs where it was still on were never affected. The kit does not touch Smart App
 Control and does not apply Microsoft's workaround, because it is a
 temporary feature override rather than a policy. If you need it, Microsoft's
 fix is to run this in an elevated Command Prompt and restart:
@@ -1212,8 +1261,35 @@ reg add "HKLM\SYSTEM\CurrentControlSet\Policies\Microsoft\FeatureManagement\Over
 Managed fleets can instead use the two Known Issue Rollback Group Policies
 Microsoft links from the
 [KB5134133 page](https://support.microsoft.com/en-us/servicing/os/windows-11/2026/10/kb5134133-windows-11-24h2-25h2-26h2-update)
-(both must be installed and set to **Enabled**). Remove the values once
-Microsoft ships the fix.
+(both must be installed and set to **Enabled**). Once on .9818 or later,
+delete the two values again (`reg delete` with the same key and `/v` names).
+
+**Memory integrity (HVCI) may turn itself on during an update.** From
+KB5127936, Microsoft enables memory integrity on eligible PCs during updates
+"while respecting existing user or IT administrator choices"; on some devices
+this also enables virtualization-based security. Kernel drivers that are not
+compatible are blocked. The kit does not set memory integrity either way, and
+it does not conflict with the kit's exploit mitigations (those are per-process
+user-mode settings). Leave it on unless a driver you need is blocked; Windows
+Security > Device security > Core isolation shows the setting.
+
+### Optional: require NTLM signing (not applied by the kit)
+
+KB5132061 (November 2026) makes Windows clients offer NTLM message signing by
+default (CVE-2026-118737). Servers still accept unsigned clients until **May
+2027**, when they start requiring signing. To require it early on a PC that
+*accepts* NTLM connections (for example, one sharing folders), Microsoft
+documents ([KB5135557](https://support.microsoft.com/help/5135557)):
+
+```
+HKLM\SYSTEM\CurrentControlSet\Control\Lsa\MSV1_0
+ServerRequireNtlmSign (DWORD) = 1      (no restart needed)
+```
+
+Unsigned clients, such as some old NAS boxes, printers or scanners, are then
+rejected, so check the *Microsoft-Windows-NTLM/Operational* log (events
+4022/4023) first. Never set `ClientAllowUnsignedNtlm = 1` except as a
+temporary compatibility workaround: it turns the new client protection off.
 
 ## Manual steps the kit cannot perform
 
