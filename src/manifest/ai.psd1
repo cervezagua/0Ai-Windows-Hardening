@@ -368,6 +368,26 @@
         Reversible  = $true
         Destructive = $false
     },
+    # v2.15.3: search highlights (Search CSP AllowSearchHighlights) - the
+    # web-fed content in the Start search box and search home. Unlike
+    # ConnectedSearchUseWeb, Microsoft lists this one for Pro too.
+    @{
+        Id          = 'AI.Search.EnableDynamicContentInWSB'
+        Category    = 'AI'
+        Group       = 'reg-safe'
+        Description = 'Turn off search highlights (web-fed content in the Start search box and search home; Pro, Enterprise, Education)'
+        MinBuild    = 0
+        Kind        = 'Registry'
+        Hive        = 'HKLM'
+        Key         = 'SOFTWARE\Policies\Microsoft\Windows\Windows Search'
+        Value       = 'EnableDynamicContentInWSB'
+        Type        = 'DWord'
+        Data        = 0
+        DocUrl      = 'https://learn.microsoft.com/windows/client-management/mdm/policy-csp-search#allowsearchhighlights'
+        Confidence  = 'Documented'
+        Reversible  = $true
+        Destructive = $false
+    },
 
     # ---- [A5] Suggested Actions + Input Personalization ----
     @{

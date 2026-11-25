@@ -1,7 +1,7 @@
 # 0AI - Windows Hardening Kit
 
 ### Windows 11 Privacy, AI Disablement & Security Hardening
-**Version:** `v2.15.2`
+**Version:** `v2.15.3`
 
 **Supported baselines:** Windows 11 25H2 (OS Build **26200.9974+**) and 26H2
 (OS Build **26300.9974+**), through the **November 10 2026 Patch Tuesday
@@ -11,8 +11,9 @@ Enterprise and Education get KB5132061 as 26100.9974 and keep receiving
 fixes until October 12 2027.
 Earlier builds still work but the 25H2-specific switches (e.g. File Explorer
 AI Actions, IsoEnvBroker, RemoveMicrosoftCopilotApp) are no-ops.
-Also reviewed: the October 26 out-of-band **KB5134133** (.9725) and the
-October 28 preview **KB5127936** (.9818). There is no December 2026 preview.
+Also reviewed: the October 26 out-of-band **KB5134133** (.9725), the
+October 28 preview **KB5127936** (.9818) and the November 19 preview
+**KB5132057** (.10075). There is no December 2026 preview.
 
 **Edition note.** Microsoft's WindowsAI policy reference marks several
 policies the kit writes as **not applying to Pro** — `DisableSettingsAgent`,
@@ -124,6 +125,37 @@ the manifest. No changes.
 reinstalled by `Revert.ps1`. Opt in only if you're comfortable with that.
 
 ---
+
+## What's new in v2.15.3
+
+**Reviewed the November 19 preview
+[KB5132057](https://support.microsoft.com/en-us/servicing/os/windows-11/2026/11/kb5132057-windows-11-25h2-26h2-update)**
+(26200/26300.10075, optional). The baseline stays the November 10 security
+update KB5132061 (.9974). There is no December preview; servicing resumes in
+January 2027 (the KB page says "January 2026", a typo).
+
+- **New Windows Search** (gradual rollout, English first): a single result
+  list, inline actions, file previews, and "quick answers about weather,
+  stocks, and facts", which come from the web.
+  - **New policy `AI.Search.EnableDynamicContentInWSB = 0`** (*Allow search
+    highlights*, Search CSP `AllowSearchHighlights`). It turns off the
+    web-fed highlights in the Start search box and search home, and unlike
+    v2.15.2's `ConnectedSearchUseWeb`, Microsoft lists it for **Pro** as
+    well as Enterprise and Education.
+  - Microsoft does not say whether either policy also hides the new quick
+    answers. If you have .10075 with the new Search, tell us whether they
+    still appear after Apply.
+- **Phone Link inline actions in Search** (call, text, "Find my phone"):
+  DEBLOAT already removes Phone Link.
+- **Widgets now notify you when an app adds a widget:** already off with
+  `AllowWidgets = 0`, and DEBLOAT removes the Widgets app.
+- **"Discover your account benefits" in Settings** (Microsoft account
+  services): no documented policy yet, so it is on the watch list.
+- **AI components** (Copilot+ PCs) moved to 1.2611.1231.0. They are still
+  governed by the existing WindowsAI policies.
+- **Nothing else** in this preview touches the kit. The WindowsAI
+  agent-connector policies are still Insider-only. The one known issue
+  (SQL Server linked-server connections) affects servers only.
 
 ## What's new in v2.15.2
 
